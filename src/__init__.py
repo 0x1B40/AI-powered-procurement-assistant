@@ -1,0 +1,2 @@
+"""Procurement assistant package."""
+
