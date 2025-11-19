@@ -1,0 +1,63 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+htmlcov
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# Large data files (will be mounted as volume)
+*.csv
+*.xlsx
+*.pdf
+*.docx
+
+# Logs
+*.log
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Tests (if not needed in container)
+tests/
+
+# Notebooks (if not needed in container)
+notebooks/
+
+# Local configuration
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.bak

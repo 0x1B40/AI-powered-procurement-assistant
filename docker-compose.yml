@@ -1,0 +1,68 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: procurement_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: california_procurement
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./data:/data/backup
+    networks:
+      - procurement_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: procurement_app
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://admin:password@mongodb:27017/california_procurement?authSource=admin
+      MONGODB_DB: california_procurement
+      MONGODB_COLLECTION: purchase_orders
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_TEMPERATURE: 0.1
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - procurement_network
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  streamlit:
+    build: .
+    container_name: procurement_streamlit
+    restart: unless-stopped
+    environment:
+      API_URL: http://app:8000/chat
+    ports:
+      - "8501:8501"
+    depends_on:
+      - app
+    networks:
+      - procurement_network
+    command: ["streamlit", "run", "src/ui.py", "--server.port=8501", "--server.address=0.0.0.0"]
+
+volumes:
+  mongodb_data:
+
+networks:
+  procurement_network:
+    driver: bridge
