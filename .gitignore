@@ -1,0 +1,31 @@
+# Build results
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Local configuration
+.env
+env.local
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Data dumps
+*.csv
+*.xlsx
+*.pdf
+*.docx
+
+# Feel free to append more patterns below
+
