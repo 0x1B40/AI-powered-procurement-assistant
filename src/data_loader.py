@@ -27,8 +27,13 @@ def snake_case(name: str) -> str:
 
 def normalize_chunk(chunk: pd.DataFrame) -> Iterable[dict]:
     chunk = chunk.rename(columns={col: snake_case(col) for col in chunk.columns})
-    chunk = chunk.where(pd.notnull(chunk), None)
-    return chunk.to_dict(orient="records")
+    # Convert DataFrame to dict and manually replace NaN with None
+    records = chunk.to_dict(orient="records")
+    for record in records:
+        for key, value in record.items():
+            if pd.isna(value):
+                record[key] = None
+    return records
 
 
 def load_csv(csv_path: Path, batch_size: int = 5_000) -> None:
