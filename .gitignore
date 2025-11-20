@@ -45,5 +45,5 @@ Thumbs.db
 # Docker
 .dockerignore
 
-# Data files (if needed)
-# data/
+# Data files
+data/
