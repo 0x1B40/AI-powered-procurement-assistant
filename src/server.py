@@ -7,7 +7,7 @@ from . import agent
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(..., min_length=3, description="Natural language procurement question")
+    question: str = Field(..., description="Natural language procurement question")
 
 
 class ChatResponse(BaseModel):
