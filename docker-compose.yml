@@ -28,9 +28,9 @@ services:
       MONGODB_URI: mongodb://admin:password@mongodb:27017/california_procurement?authSource=admin
       MONGODB_DB: california_procurement
       MONGODB_COLLECTION: purchase_orders
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: gpt-4o-mini
-      OPENAI_TEMPERATURE: 0.1
+      GROK_API_KEY: ${GROK_API_KEY}
+      GROK_MODEL: grok-4-1-fast-non-reasoning
+      GROK_TEMPERATURE: 0.1
     ports:
       - "8000:8000"
     depends_on:

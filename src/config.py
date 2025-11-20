@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     mongodb_db: str = Field(env="MONGODB_DB", default="california_procurement")
     mongodb_collection: str = Field(env="MONGODB_COLLECTION", default="purchase_orders")
 
-    openai_api_key: str = Field(env="OPENAI_API_KEY")
-    openai_model: str = Field(env="OPENAI_MODEL", default="gpt-4o-mini")
-    openai_temperature: float = Field(env="OPENAI_TEMPERATURE", default=0.1)
+    grok_api_key: str = Field(env="GROK_API_KEY")
+    grok_model: str = Field(env="GROK_MODEL", default="grok-4-1-fast-non-reasoning")
+    grok_temperature: float = Field(env="GROK_TEMPERATURE", default=0.1)
 
     class Config:
         env_file = Path(__file__).resolve().parent.parent / ".env"

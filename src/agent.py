@@ -40,9 +40,10 @@ def _get_llm():
     """Get configured LLM with caching."""
     settings = get_settings()
     return ChatOpenAI(
-        api_key=settings.openai_api_key,
-        model=settings.openai_model,
-        temperature=settings.openai_temperature,
+        api_key=settings.grok_api_key,
+        model=settings.grok_model,
+        temperature=settings.grok_temperature,
+        base_url="https://api.x.ai/v1",
     )
 
 
@@ -242,7 +243,7 @@ def chat(question: str, context: Dict | None = None) -> str:
 
     except Exception as e:
         # Fallback to error message
-        return f"I encountered an error while processing your question: {str(e)}. Please check your OpenAI API key and MongoDB connection."
+        return f"I encountered an error while processing your question: {str(e)}. Please check your Grok API key and MongoDB connection."
 
 
 # Keep the mock function for fallback if needed
