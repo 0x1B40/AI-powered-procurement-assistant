@@ -136,6 +136,11 @@ For Docker usage, place your data files in the `data/` directory:
 - `data/PURCHASE ORDER DATA EXTRACT.csv` (156MB dataset)
 - Other documentation files can remain in the root or data directory
 
+### Data Documentation & Validation
+
+- `docs/data_schema.md` — canonical schema reference covering every column, data type, and known data-quality caveats.
+- `python scripts/validate_mongodb_schema.py --expected-count 919734 --sample-size 500` — quick health check to confirm MongoDB ingestion completeness and field coverage.
+
 ### Testing Queries
 
 Sample prompts you can use once the system is running:
