@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from typing import Dict, Any, List, TypedDict, Annotated
+from typing import Dict, Any, List, TypedDict, Annotated, Tuple
 from datetime import datetime
 
 from langchain_openai import ChatOpenAI
@@ -45,6 +45,59 @@ def _get_llm():
         temperature=settings.grok_temperature,
         base_url="https://api.x.ai/v1",
     )
+
+
+SCHEMA_FIELDS = """
+Important fields (MongoDB collection `purchase_orders`):
+- purchase_order_number (string) — unique order id; multiple rows per PO possible
+- department_name (string) — ordering agency name
+- supplier_name (string), supplier_code (string) — vendor metadata
+- acquisition_type / acquisition_method / sub_acquisition_method (string) — procurement classifications
+- item_name, item_description (string) — commodity information
+- quantity (number), unit_price (number), total_price (number)
+- creation_date, purchase_date (string in MM/DD/YYYY) and fiscal_year (string)
+- segment_title, family_title, class_title, commodity_title, normalized_unspsc (string/number) — UNSPSC hierarchy
+- calcard (string 'YES'|'NO'), location (string), lpa_number (string), requisition_number (string)
+
+Guidelines:
+- Only reference existing fields above (snake_case).
+- Never project the entire document (`$$ROOT`) or include recursive structures.
+- Keep pipelines minimal: use $match/$group/$sort/$limit/$project as needed.
+- Always return JSON array of aggregation stages, even for simple queries.
+"""
+
+SMALLTALK_PATTERNS = re.compile(
+    r"\b(hi|hello|hey|thanks?|thank you|good morning|good afternoon|good evening|how are you)\b",
+    re.IGNORECASE,
+)
+
+
+def is_smalltalk(text: str) -> bool:
+    stripped = (text or "").strip()
+    if not stripped:
+        return True
+    return bool(SMALLTALK_PATTERNS.search(stripped)) and len(stripped.split()) <= 6
+
+
+def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, Any]]]:
+    try:
+        pipeline = json.loads(query_text)
+    except json.JSONDecodeError as exc:
+        return False, f"Error: Invalid JSON query - {str(exc)}"
+
+    if not isinstance(pipeline, list):
+        return False, "Error: Query must be a list of aggregation pipeline stages"
+    if not pipeline:
+        return False, "Error: Query pipeline is empty"
+
+    for stage in pipeline:
+        if not isinstance(stage, dict):
+            return False, "Error: Each pipeline stage must be a JSON object"
+        stage_str = json.dumps(stage)
+        if "$$ROOT" in stage_str:
+            return False, "Error: Pipelines must not reference $$ROOT or self-referential projections"
+
+    return True, pipeline
 
 
 @tool
@@ -107,38 +160,30 @@ def execute_mongodb_query(query: str) -> str:
 
 def create_mongodb_query_prompt(question: str) -> str:
     """Create a prompt for generating MongoDB queries."""
-    return f"""You are a MongoDB expert. Convert this natural language question into a MongoDB aggregation pipeline.
+    return f"""You are a MongoDB aggregation expert working over the California procurement collection.
 
-QUESTION: {question}
+QUESTION:
+{question}
 
-CONTEXT: You are working with a California procurement dataset. The collection contains purchase order data with these relevant fields:
-- purchase_order: PO number (string)
-- total_amount: Purchase amount (number)
-- creation_date: When order was created (date)
-- vendor_name: Supplier name (string)
-- department_name: Government department (string)
-- item_description: What was purchased (string)
-- acquisition_type: Procurement method (string)
+{SCHEMA_FIELDS}
 
-COMMON QUERY PATTERNS:
-- Count documents: Use $count stage
-- Sum amounts: Use $group with $sum
-- Average values: Use $group with $avg
-- Filter by date: Use $match with date comparisons
-- Top N items: Use $group, $sort, $limit
-- Group by categories: Use $group with _id
-
-Return ONLY a valid MongoDB aggregation pipeline as JSON array. No explanations, no markdown, just the JSON.
+Instructions:
+- Always output ONLY a JSON array of aggregation stages. No prose, no markdown.
+- Use snake_case field names exactly as provided.
+- Prefer $match → $group → $sort → $limit patterns for analytics.
+- Convert monetary questions to sums of $total_price; averages use $avg.
+- Date filters use $match on creation_date or fiscal_year strings.
+- For counts, use $count or $group with $sum: 1.
+- NEVER use $$ROOT, $out, $merge, or stages that return the full document as a field.
+- If the question asks for text explanation without data (e.g., greetings), return an empty array [].
 
 Examples:
-Question: "How many purchase orders were created?"
-Answer: [{{"$count": "total_orders"}}]
-
-Question: "What is the total spending?"
-Answer: [{{"$group": {{"_id": null, "total_spend": {{"$sum": "$total_amount"}}}}}}]
-
-Question: "Top 5 vendors by spending?"
-Answer: [{{"$group": {{"_id": "$vendor_name", "total_spend": {{"$sum": "$total_amount"}}}}}}, {{"$sort": {{"total_spend": -1}}}}, {{"$limit": 5}}]
+Top departments by spend:
+[{{"$group": {{"_id": "$department_name", "total_spend": {{"$sum": "$total_price"}}}}}}, {{"$sort": {{"total_spend": -1}}}}, {{"$limit": 5}}]
+Total purchase orders:
+[{{"$count": "purchase_order_count"}}]
+Average spend for IT Goods in 2014-2015:
+[{{"$match": {{"acquisition_type": "IT Goods", "fiscal_year": "2014-2015"}}}}, {{"$group": {{"_id": null, "average_spend": {{"$avg": "$total_price"}}}}}}]
 """
 
 
@@ -162,8 +207,16 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
     query_text = re.sub(r'```(?:json)?\s*', '', query_text)
     query_text = re.sub(r'```\s*$', '', query_text)
 
+    is_valid, pipeline_or_error = validate_pipeline_text(query_text)
+    if not is_valid:
+        error_msg = pipeline_or_error
+        return {
+            "mongodb_results": [{"error": error_msg}],
+            "final_answer": error_msg,
+        }
+
     # Execute the query
-    tool_result = execute_mongodb_query(query_text)
+    tool_result = execute_mongodb_query(json.dumps(pipeline_or_error))
 
     return {
         "mongodb_results": [json.loads(tool_result)] if tool_result.startswith('[') else [{"error": tool_result}],
@@ -227,6 +280,11 @@ def get_procurement_agent():
 def chat(question: str, context: Dict | None = None) -> str:
     """Generate a MongoDB-grounded answer for a procurement question using LangChain and LangGraph."""
     try:
+        if is_smalltalk(question):
+            return (
+                "Hello! I'm the California procurement assistant. "
+                "Ask me about spending, suppliers, departments, dates, or other procurement metrics."
+            )
         agent = get_procurement_agent()
 
         # Prepare initial state
