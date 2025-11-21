@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from src.data_loader import snake_case, normalize_chunk
+from src.data_loader import snake_case, normalize_chunk, sanitize_currency_series
 
 
 class TestDataLoader:
@@ -50,6 +50,34 @@ class TestDataLoader:
         assert result[1]["nan_column"] is None  # Second row has NaN converted to None
 
         assert result == expected
+
+    def test_normalize_chunk_currency(self):
+        df = pd.DataFrame(
+            {
+                "Total Price": ["$1,200.00", "3,500", None, "invalid"],
+                "Unit Price": ["$10.00", "$5", "1,234.56", None],
+            }
+        )
+
+        result = list(normalize_chunk(df))
+
+        assert result[0]["total_price"] == 1200.0
+        assert result[1]["total_price"] == 3500.0
+        assert result[2]["total_price"] is None
+        assert result[3]["total_price"] is None
+
+        assert result[0]["unit_price"] == 10.0
+        assert result[1]["unit_price"] == 5.0
+        assert result[2]["unit_price"] == 1234.56
+        assert result[3]["unit_price"] is None
+
+    def test_sanitize_currency_series(self):
+        series = pd.Series(["$1,000.00", "  42 ", None, ""])
+        cleaned = sanitize_currency_series(series)
+        assert cleaned.tolist()[0] == 1000.0
+        assert cleaned.tolist()[1] == 42.0
+        assert pd.isna(cleaned.tolist()[2])
+        assert pd.isna(cleaned.tolist()[3])
 
     @patch('src.data_loader.MongoClient')
     @patch('src.data_loader.get_settings')

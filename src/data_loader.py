@@ -13,6 +13,8 @@ from .config import get_settings
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
+MONETARY_COLUMNS = ("total_price", "unit_price")
+
 
 def snake_case(name: str) -> str:
     return (
@@ -25,8 +27,25 @@ def snake_case(name: str) -> str:
     )
 
 
+def sanitize_currency_series(series: pd.Series) -> pd.Series:
+    """Strip currency formatting and return floats."""
+    cleaned = (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+        .str.replace(r"[^\d\.\-]", "", regex=True)
+    )
+    cleaned = cleaned.replace("", pd.NA)
+    return pd.to_numeric(cleaned, errors="coerce")
+
+
 def normalize_chunk(chunk: pd.DataFrame) -> Iterable[dict]:
     chunk = chunk.rename(columns={col: snake_case(col) for col in chunk.columns})
+
+    for column in MONETARY_COLUMNS:
+        if column in chunk.columns:
+            chunk[column] = sanitize_currency_series(chunk[column])
+
     # Convert DataFrame to dict and manually replace NaN with None
     records = chunk.to_dict(orient="records")
     for record in records:
@@ -51,7 +70,18 @@ def load_csv(csv_path: Path, batch_size: int = 5_000) -> None:
         total_inserted += len(result.inserted_ids)
         logger.info("Inserted %d rows (total=%d)", len(result.inserted_ids), total_inserted)
 
-    logger.info("Finished loading %d rows into %s.%s", total_inserted, settings.mongodb_db, settings.mongodb_collection)
+    db_count = collection.count_documents({})
+    if db_count != total_inserted:
+        raise RuntimeError(
+            f"MongoDB document count mismatch (expected {total_inserted}, found {db_count})."
+        )
+
+    logger.info(
+        "Finished loading %d rows into %s.%s",
+        total_inserted,
+        settings.mongodb_db,
+        settings.mongodb_collection,
+    )
 
 
 def parse_args() -> argparse.Namespace:
