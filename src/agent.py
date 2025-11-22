@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from enum import Enum
 from functools import lru_cache
 from typing import Dict, Any, List, TypedDict, Annotated, Tuple, TYPE_CHECKING
 from datetime import datetime
@@ -29,6 +30,15 @@ class AgentState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
     mongodb_results: List[Dict[str, Any]]
     final_answer: str
+    question_category: str
+    classification_confidence: float | None
+
+
+class QuestionCategory(str, Enum):
+    QUERY_GENERATION = "query_generation"
+    DATABASE_INFO = "database_info"
+    ACQUISITION_METHODS = "acquisition_methods"
+    OUT_OF_SCOPE = "out_of_scope"
 
 
 @lru_cache
@@ -328,19 +338,52 @@ Provide a concise, readable answer that directly addresses the question."""
     return {"final_answer": response.content}
 
 
+@traceable_step(name="classify_question", tags=["routing"])
+def classify_question(state: AgentState) -> Dict[str, Any]:
+    """Categorize the incoming user question before running expensive steps."""
+    messages = state.get("messages", [])
+    question = messages[-1].content if messages else ""
+    # Placeholder for now - will be implemented in next commit
+    category = QuestionCategory.OUT_OF_SCOPE
+    return {"question_category": category.value}
+
+
+@traceable_step(name="handle_out_of_scope", tags=["routing"])
+def handle_out_of_scope(state: AgentState) -> Dict[str, Any]:
+    """Return a formal response whenever the prompt is out of scope."""
+    return {
+        "mongodb_results": [],
+        "final_answer": "I'm focused on generating procurement MongoDB queries, describing the dataset, and explaining acquisition methods. Please ask about those topics.",
+        "question_category": state.get("question_category", QuestionCategory.OUT_OF_SCOPE.value),
+    }
+
+
 # Create the LangGraph workflow
 def create_procurement_agent():
     """Create the LangGraph agent for procurement queries."""
     workflow = StateGraph(AgentState)
 
     # Add nodes
+    workflow.add_node("classify_question", classify_question)
     workflow.add_node("analyze_question", analyze_question)
     workflow.add_node("format_response", format_response)
+    workflow.add_node("handle_out_of_scope", handle_out_of_scope)
 
     # Define flow
-    workflow.set_entry_point("analyze_question")
+    workflow.set_entry_point("classify_question")
+    workflow.add_conditional_edges(
+        "classify_question",
+        lambda state: state.get("question_category", QuestionCategory.OUT_OF_SCOPE.value),
+        {
+            QuestionCategory.QUERY_GENERATION.value: "analyze_question",
+            QuestionCategory.DATABASE_INFO.value: "analyze_question",
+            QuestionCategory.ACQUISITION_METHODS.value: "analyze_question",
+            QuestionCategory.OUT_OF_SCOPE.value: "handle_out_of_scope",
+        },
+    )
     workflow.add_edge("analyze_question", "format_response")
     workflow.add_edge("format_response", END)
+    workflow.add_edge("handle_out_of_scope", END)
 
     return workflow.compile()
 
@@ -361,18 +404,15 @@ def get_procurement_agent():
 def chat(question: str, context: Dict | None = None) -> str:
     """Generate a MongoDB-grounded answer for a procurement question using LangChain and LangGraph."""
     try:
-        if is_smalltalk(question):
-            return (
-                "Hello! I'm the California procurement assistant. "
-                "Ask me about spending, suppliers, departments, dates, or other procurement metrics."
-            )
         agent = get_procurement_agent()
 
         # Prepare initial state
         initial_state = {
             "messages": [HumanMessage(content=question)],
             "mongodb_results": [],
-            "final_answer": ""
+            "final_answer": "",
+            "question_category": QuestionCategory.OUT_OF_SCOPE.value,
+            "classification_confidence": None,
         }
 
         # Run the agent
