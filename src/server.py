@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, constr
 
 from . import agent
 
+QuestionStr = constr(min_length=2, strip_whitespace=True)
+
 
 class ChatRequest(BaseModel):
-    question: str = Field(..., description="Natural language procurement question")
+    question: QuestionStr = Field(..., description="Natural language procurement question")
 
 
 class ChatResponse(BaseModel):
