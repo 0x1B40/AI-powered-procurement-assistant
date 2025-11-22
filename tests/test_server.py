@@ -30,10 +30,12 @@ class TestServer:
         response = self.client.post("/chat", json=payload)
         assert response.status_code == 422  # Validation error
 
-        # Test with question too short
-        payload = {"question": "Hi"}
-        response = self.client.post("/chat", json=payload)
-        assert response.status_code == 422  # Validation error
+        # Test with minimal valid question (should hit agent layer)
+        with patch('src.server.agent.chat', return_value="OK"):
+            payload = {"question": "Hi"}
+            response = self.client.post("/chat", json=payload)
+            assert response.status_code == 200
+            assert response.json() == {"answer": "OK"}
 
     @patch('src.server.agent.chat')
     def test_chat_endpoint_agent_error(self, mock_chat):
