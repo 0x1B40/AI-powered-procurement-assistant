@@ -18,6 +18,7 @@ from pymongo.errors import OperationFailure
 
 from .config import get_settings
 from .telemetry import traceable_step, log_child_run
+from .vector_store import retrieve_reference_chunks
 
 # Importing ChatOpenAI eagerly causes SSL context creation, which can fail inside
 # restricted CI sandboxes. We import it lazily in _get_llm(), but still want type
@@ -30,6 +31,7 @@ class AgentState(TypedDict):
     """State for the LangGraph agent."""
     messages: Annotated[List[BaseMessage], add_messages]
     mongodb_results: List[Dict[str, Any]]
+    reference_context: List[Dict[str, Any]]
     final_answer: str
     question_category: str
     classification_confidence: float | None
@@ -40,6 +42,12 @@ class QuestionCategory(str, Enum):
     DATABASE_INFO = "database_info"
     ACQUISITION_METHODS = "acquisition_methods"
     OUT_OF_SCOPE = "out_of_scope"
+
+
+REFERENCE_CATEGORIES = {
+    QuestionCategory.DATABASE_INFO.value,
+    QuestionCategory.ACQUISITION_METHODS.value,
+}
 
 
 @lru_cache
@@ -301,6 +309,39 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
     """Analyze the question and generate MongoDB query."""
     messages = state["messages"]
     question = messages[-1].content if messages else ""
+    category = state.get("question_category", QuestionCategory.OUT_OF_SCOPE.value)
+
+    if category in REFERENCE_CATEGORIES:
+        references = retrieve_reference_chunks(question)
+        if references:
+            log_child_run(
+                name="reference_retrieval",
+                inputs={"question": question},
+                outputs={"reference_count": len(references)},
+                tags=["reference-search"],
+            )
+            return {
+                "mongodb_results": [],
+                "reference_context": references,
+                "final_answer": "",
+            }
+
+        fallback_message = (
+            "I could not access the procurement reference documents. "
+            "Run `python -m scripts.build_reference_store` to build the Chroma index and try again."
+        )
+        log_child_run(
+            name="reference_retrieval",
+            inputs={"question": question},
+            outputs={"reference_count": 0},
+            tags=["reference-search"],
+            error=fallback_message,
+        )
+        return {
+            "mongodb_results": [],
+            "reference_context": [],
+            "final_answer": fallback_message,
+        }
 
     llm = _get_llm()
 
@@ -375,7 +416,28 @@ def format_response(state: AgentState) -> Dict[str, Any]:
     llm = _get_llm()
 
     question = state["messages"][-1].content if state["messages"] else ""
+    reference_context = state.get("reference_context") or []
     results = state.get("mongodb_results", [])
+    category = state.get("question_category")
+
+    if reference_context:
+        context_prompt = f"""You are a procurement SME. Use the provided reference passages to answer the user's question.
+
+CONTEXT:
+{json.dumps(reference_context, indent=2)}
+
+QUESTION:
+{question}
+
+Guidelines:
+- Cite the document name (and page when available) when referencing facts.
+- If the context does not contain the answer, state that explicitly instead of guessing.
+"""
+        response = llm.invoke([SystemMessage(content=context_prompt)])
+        return {"final_answer": response.content}
+
+    if category in REFERENCE_CATEGORIES and state.get("final_answer"):
+        return {"final_answer": state["final_answer"]}
 
     if not results or (len(results) == 1 and "error" in results[0]):
         error_msg = results[0].get("error", "No results found") if results else "No results found"
@@ -417,6 +479,7 @@ def handle_out_of_scope(state: AgentState) -> Dict[str, Any]:
     """Return a formal response whenever the prompt is out of scope."""
     return {
         "mongodb_results": [],
+        "reference_context": [],
         "final_answer": OUT_OF_SCOPE_RESPONSE,
         "question_category": state.get("question_category", QuestionCategory.OUT_OF_SCOPE.value),
         "classification_confidence": state.get("classification_confidence"),
@@ -475,6 +538,7 @@ def chat(question: str, context: Dict | None = None) -> str:
         initial_state = {
             "messages": [HumanMessage(content=question)],
             "mongodb_results": [],
+            "reference_context": [],
             "final_answer": "",
             "question_category": QuestionCategory.OUT_OF_SCOPE.value,
             "classification_confidence": None,
