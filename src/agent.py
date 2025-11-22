@@ -3,13 +3,11 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from typing import Dict, Any, List, TypedDict, Annotated, Tuple
+from typing import Dict, Any, List, TypedDict, Annotated, Tuple, TYPE_CHECKING
 from datetime import datetime
 
-from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool, BaseTool
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from pymongo import MongoClient
@@ -17,6 +15,12 @@ from pymongo.collection import Collection
 from pymongo.errors import OperationFailure
 
 from .config import get_settings
+
+# Importing ChatOpenAI eagerly causes SSL context creation, which can fail inside
+# restricted CI sandboxes. We import it lazily in _get_llm(), but still want type
+# checkers to know about the symbol—hence the TYPE_CHECKING guard.
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 
 class AgentState(TypedDict):
@@ -38,13 +42,16 @@ def _get_collection() -> Collection:
 @lru_cache
 def _get_llm():
     """Get configured LLM with caching."""
+    from langchain_openai import ChatOpenAI  # Local import avoids SSL context issues during module import in restricted environments
     settings = get_settings()
-    return ChatOpenAI(
-        api_key=settings.grok_api_key,
-        model=settings.grok_model,
-        temperature=settings.grok_temperature,
-        base_url="https://api.x.ai/v1",
-    )
+    kwargs = {
+        "api_key": settings.llm_api_key,
+        "model": settings.llm_model,
+        "temperature": settings.llm_temperature,
+    }
+    if settings.llm_base_url:
+        kwargs["base_url"] = settings.llm_base_url
+    return ChatOpenAI(**kwargs)
 
 
 SCHEMA_FIELDS = """
@@ -56,6 +63,8 @@ Important fields (MongoDB collection `purchase_orders`):
 - item_name, item_description (string) — commodity information
 - quantity (number), unit_price (number), total_price (number)
 - creation_date, purchase_date (string in MM/DD/YYYY) and fiscal_year (string)
+  * creation_date/purchase_date are stored as literal strings; use $dateFromString with format "%m/%d/%Y" before applying $gte/$lte or quarter logic.
+  * fiscal_year values are labels such as "2012-2013", "2013-2014", "2014-2015" (there is no bare "2013"). When the user mentions a calendar year (e.g., 2013) either filter creation_date between 01/01/YYYY–12/31/YYYY or match the fiscal_years that include that year.
 - segment_title, family_title, class_title, commodity_title, normalized_unspsc (string/number) — UNSPSC hierarchy
 - calcard (string 'YES'|'NO'), location (string), lpa_number (string), requisition_number (string)
 
@@ -98,6 +107,38 @@ def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, 
             return False, "Error: Pipelines must not reference $$ROOT or self-referential projections"
 
     return True, pipeline
+
+
+MAX_QUERY_ATTEMPTS = 3
+RETRY_SNIPPET_LIMIT = 800
+
+
+def _strip_code_fences(text: str) -> str:
+    """Remove markdown code fences and trim whitespace."""
+    if not text:
+        return ""
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"```$", "", cleaned).strip()
+    return cleaned
+
+
+def _truncate(text: str, limit: int = RETRY_SNIPPET_LIMIT) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...(truncated)..."
+
+
+def _build_retry_instruction(question: str, error_message: str, previous_output: str) -> str:
+    snippet = _truncate(previous_output.strip())
+    return (
+        "The previous output was not valid JSON."
+        f"\nError: {error_message}"
+        f"\nQuestion: {question}"
+        f"\nPrevious output:\n{snippet}"
+        "\n\nRespond with ONLY a valid JSON array of MongoDB aggregation stages. "
+        "Do not include markdown, comments, or prose."
+    )
 
 
 @tool
@@ -194,29 +235,38 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
 
     llm = _get_llm()
 
-    # Create prompt for query generation
     prompt = create_mongodb_query_prompt(question)
+    system_message = SystemMessage(content=prompt)
 
-    # Generate MongoDB query
-    response = llm.invoke([SystemMessage(content=prompt)])
+    pipeline = None
+    error_msg = ""
+    previous_output = ""
 
-    # Extract the query (should be just JSON)
-    query_text = response.content.strip()
+    for attempt in range(MAX_QUERY_ATTEMPTS):
+        messages: List[BaseMessage] = [system_message]
+        if attempt > 0:
+            retry_instruction = _build_retry_instruction(question, error_msg, previous_output)
+            messages.append(HumanMessage(content=retry_instruction))
 
-    # Clean up the response (remove markdown if present)
-    query_text = re.sub(r'```(?:json)?\s*', '', query_text)
-    query_text = re.sub(r'```\s*$', '', query_text)
+        response = llm.invoke(messages)
+        query_text = _strip_code_fences(response.content)
+        previous_output = query_text
 
-    is_valid, pipeline_or_error = validate_pipeline_text(query_text)
-    if not is_valid:
-        error_msg = pipeline_or_error
+        is_valid, pipeline_or_error = validate_pipeline_text(query_text)
+        if is_valid:
+            pipeline = pipeline_or_error
+            break
+
+        error_msg = pipeline_or_error if isinstance(pipeline_or_error, str) else "Invalid query format."
+
+    if pipeline is None:
+        final_error = error_msg or "Failed to generate a valid MongoDB pipeline."
         return {
-            "mongodb_results": [{"error": error_msg}],
-            "final_answer": error_msg,
+            "mongodb_results": [{"error": final_error}],
+            "final_answer": final_error,
         }
 
-    # Execute the query
-    tool_result = execute_mongodb_query(json.dumps(pipeline_or_error))
+    tool_result = execute_mongodb_query(json.dumps(pipeline))
 
     return {
         "mongodb_results": [json.loads(tool_result)] if tool_result.startswith('[') else [{"error": tool_result}],

@@ -28,9 +28,10 @@ services:
       MONGODB_URI: mongodb://admin:password@mongodb:27017/california_procurement?authSource=admin
       MONGODB_DB: california_procurement
       MONGODB_COLLECTION: purchase_orders
-      GROK_API_KEY: ${GROK_API_KEY}
-      GROK_MODEL: grok-4-1-fast-non-reasoning
-      GROK_TEMPERATURE: 0.1
+      PRIMARY_LLM_API_KEY: ${PRIMARY_LLM_API_KEY:-}
+      PRIMARY_LLM_MODEL: ${PRIMARY_LLM_MODEL:-grok-4-1-fast-non-reasoning}
+      PRIMARY_LLM_TEMPERATURE: ${PRIMARY_LLM_TEMPERATURE:-0.1}
+      PRIMARY_LLM_BASE_URL: ${PRIMARY_LLM_BASE_URL:-https://api.x.ai/v1}
     ports:
       - "8000:8000"
     depends_on:
