@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, constr
 
-from . import agent
+from ..core import agent
 
 QuestionStr = constr(min_length=2, strip_whitespace=True)
 

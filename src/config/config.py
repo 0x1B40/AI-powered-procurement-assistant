@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Union
 
 from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings
@@ -29,20 +29,20 @@ class Settings(BaseSettings):
     reference_chunk_size: int = Field(default=1000, env="REFERENCE_CHUNK_SIZE")
     reference_chunk_overlap: int = Field(default=150, env="REFERENCE_CHUNK_OVERLAP")
 
-    primary_llm_api_key: str | None = Field(default=None, env="PRIMARY_LLM_API_KEY")
+    primary_llm_api_key: Optional[str] = Field(default=None, env="PRIMARY_LLM_API_KEY")
     primary_llm_model: str = Field(default="grok-4-1-fast-non-reasoning", env="PRIMARY_LLM_MODEL")
     primary_llm_temperature: float = Field(default=0.1, env="PRIMARY_LLM_TEMPERATURE")
-    primary_llm_base_url: str | None = Field(default=None, env="PRIMARY_LLM_BASE_URL")
+    primary_llm_base_url: Optional[str] = Field(default=None, env="PRIMARY_LLM_BASE_URL")
 
-    langsmith_api_key: str | None = Field(
+    langsmith_api_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("LANGCHAIN_API_KEY", "LANGSMITH_API_KEY"),
     )
-    langsmith_project: str | None = Field(
+    langsmith_project: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("LANGCHAIN_PROJECT", "LANGSMITH_PROJECT"),
     )
-    langsmith_endpoint: str | None = Field(
+    langsmith_endpoint: Optional[str] = Field(
         default="https://api.smith.langchain.com",
         validation_alias=AliasChoices("LANGCHAIN_ENDPOINT", "LANGSMITH_ENDPOINT"),
     )
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
         return self.primary_llm_temperature
 
     @property
-    def llm_base_url(self) -> str | None:
+    def llm_base_url(self) -> Optional[str]:
         """Optional override so we can talk to non-OpenAI-compatible endpoints (e.g., xAI)."""
         return self.primary_llm_base_url
 
@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     def _export_langsmith_env(self) -> None:
         """Propagate LangSmith-specific settings into the actual environment."""
 
-        def _set_env(var_name: str, value: str | None) -> None:
+        def _set_env(var_name: str, value: Optional[str]) -> None:
             if value and not os.getenv(var_name):
                 os.environ[var_name] = value
 

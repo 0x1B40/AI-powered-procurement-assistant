@@ -1,0 +1,146 @@
+{
+  "metadata": {
+    "total_rows": 10000,
+    "sample_size": 10000,
+    "total_queries": 17,
+    "successful_queries": 17
+  },
+  "results": [
+    {
+      "id": "simple_count",
+      "natural_language": "How many purchase orders are there?",
+      "pandas_query": "len(df)",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "10000"
+    },
+    {
+      "id": "simple_departments",
+      "natural_language": "What are the unique department names?",
+      "pandas_query": "df['department_name'].unique().tolist()",
+      "expected_type": "list",
+      "success": true,
+      "result_preview": "['Consumer Affairs, Department of', 'Correctional Health Care Services', 'Corrections and Rehabilitation, Department of', 'State Hospitals, Department of', 'Water Resources, Department of', 'Water Res..."
+    },
+    {
+      "id": "simple_fiscal_years",
+      "natural_language": "What fiscal years are in the data?",
+      "pandas_query": "sorted(df['fiscal_year'].unique())",
+      "expected_type": "list",
+      "success": true,
+      "result_preview": "['2012-2013', '2013-2014', '2014-2015']"
+    },
+    {
+      "id": "filter_fiscal_year",
+      "natural_language": "How many records are from fiscal year 2014-2015?",
+      "pandas_query": "len(df[df['fiscal_year'] == '2014-2015'])",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "2104"
+    },
+    {
+      "id": "filter_department",
+      "natural_language": "How many records are from the Department of Consumer Affairs?",
+      "pandas_query": "len(df[df['department_name'] == 'Consumer Affairs, Department of'])",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "783"
+    },
+    {
+      "id": "filter_acquisition_type",
+      "natural_language": "How many IT Goods purchases are there?",
+      "pandas_query": "len(df[df['acquisition_type'] == 'IT Goods'])",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "1382"
+    },
+    {
+      "id": "top_departments_spend",
+      "natural_language": "What are the top 5 departments by total spend?",
+      "pandas_query": "df.groupby('department_name')['total_price'].sum().sort_values(ascending=False).head(5).to_dict()",
+      "expected_type": "dict",
+      "success": true,
+      "result_preview": "{'Health Care Services, Department of': 7523702690.17, 'Franchise Tax Board': 400980672.66, 'Corrections and Rehabilitation, Department of': 169089483.51, 'Mental Health, Department of': 102023877.23,..."
+    },
+    {
+      "id": "total_spend_fiscal_year",
+      "natural_language": "What is the total spend by fiscal year?",
+      "pandas_query": "df.groupby('fiscal_year')['total_price'].sum().sort_values(ascending=False).to_dict()",
+      "expected_type": "dict",
+      "success": true,
+      "result_preview": "{'2012-2013': 8185352915.240001, '2014-2015': 496475747.75, '2013-2014': 50982727.94}"
+    },
+    {
+      "id": "avg_order_value",
+      "natural_language": "What is the average order value?",
+      "pandas_query": "df['total_price'].mean()",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "874943.5318034267"
+    },
+    {
+      "id": "spend_by_dept_fiscal",
+      "natural_language": "What is the total spend by department for fiscal year 2014-2015?",
+      "pandas_query": "df[df['fiscal_year'] == '2014-2015'].groupby('department_name')['total_price'].sum().sort_values(ascending=False).head(10).to_dict()",
+      "expected_type": "dict",
+      "success": true,
+      "result_preview": "{'Franchise Tax Board': 399487184.28000003, 'Health Care Services, Department of': 18787484.0, 'Corrections and Rehabilitation, Department of': 12769729.82, 'Public Health, Department of': 10347670.98..."
+    },
+    {
+      "id": "it_goods_2014_spend",
+      "natural_language": "What is the total spend on IT Goods in fiscal year 2014-2015?",
+      "pandas_query": "df[(df['acquisition_type'] == 'IT Goods') & (df['fiscal_year'] == '2014-2015')]['total_price'].sum()",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "5642241.140000001"
+    },
+    {
+      "id": "supplier_count_by_type",
+      "natural_language": "How many unique suppliers are there for each acquisition type?",
+      "pandas_query": "df.groupby('acquisition_type')['supplier_name'].nunique().sort_values(ascending=False).to_dict()",
+      "expected_type": "dict",
+      "success": true,
+      "result_preview": "{'NON-IT Goods': 1421, 'NON-IT Services': 1136, 'IT Goods': 297, 'IT Services': 172, 'IT Telecommunications': 5}"
+    },
+    {
+      "id": "creation_date_range",
+      "natural_language": "How many orders were created in 2014?",
+      "pandas_query": "len(df[df['creation_date'].str.contains('2014')])",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "2053"
+    },
+    {
+      "id": "top_suppliers",
+      "natural_language": "Who are the top 5 suppliers by total spend?",
+      "pandas_query": "df.groupby('supplier_name')['total_price'].sum().sort_values(ascending=False).head(5).to_dict()",
+      "expected_type": "dict",
+      "success": true,
+      "result_preview": "{'Delta Dental of California': 7337038064.0, 'CGI': 398937334.0, 'HP Enterprise Services': 129000000.02000001, 'Hensel Phelps Construction Co': 123313000.0, 'Molina Healthcare of California Partner Pl..."
+    },
+    {
+      "id": "largest_orders",
+      "natural_language": "What are the 5 largest orders by total price?",
+      "pandas_query": "df.nlargest(5, 'total_price')[['purchase_order_number', 'supplier_name', 'total_price', 'department_name']].to_dict('records')",
+      "expected_type": "list_of_dicts",
+      "success": true,
+      "result_preview": "[{'purchase_order_number': '11-88134', 'supplier_name': 'Delta Dental of California', 'total_price': 7337038064.0, 'department_name': 'Health Care Services, Department of'}, {'purchase_order_number': ..."
+    },
+    {
+      "id": "calcard_percentage",
+      "natural_language": "What percentage of orders use CalCard?",
+      "pandas_query": "(df['calcard'] == 'YES').mean() * 100",
+      "expected_type": "scalar",
+      "success": true,
+      "result_preview": "2.03"
+    },
+    {
+      "id": "acquisition_type_distribution",
+      "natural_language": "What is the distribution of acquisition types?",
+      "pandas_query": "df['acquisition_type'].value_counts().to_dict()",
+      "expected_type": "dict",
+      "success": true,
+      "result_preview": "{'NON-IT Goods': 6668, 'NON-IT Services': 1624, 'IT Goods': 1382, 'IT Services': 321, 'IT Telecommunications': 5}"
+    }
+  ]
+}

@@ -13,7 +13,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from pypdf import PdfReader
 
-from .config import get_settings
+from ..config.config import get_settings
 
 logger = logging.getLogger(__name__)
 

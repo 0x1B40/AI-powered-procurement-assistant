@@ -105,12 +105,69 @@ activate.bat ui
 
 ### Architecture
 
-- `src/data_loader.py` — incremental CSV → MongoDB ingestion with schema normalization.
-- `src/agent.py` — LangChain + LangGraph agent that converts natural language to MongoDB queries and executes them.
-- `src/server.py` — FastAPI app exposing `/chat` and `/health`.
-- `src/ui.py` — Streamlit chat client that calls the backend.
-- `notebooks/eda.ipynb` — exploratory data analysis notebook.
-- `scripts/build_reference_store.py` — CLI helper to ingest documentation into the Chroma vector DB.
+The application follows a modular, layered architecture with clear separation of concerns:
+
+#### Core Components
+- **Agent System** (`src/core/`): LangChain + LangGraph orchestration that converts natural language to MongoDB queries
+- **LLM Integration** (`src/llm/`): OpenAI API integration with question classification
+- **Database Layer** (`src/database/`): MongoDB connection and query execution
+- **Query Processing** (`src/query/`): Query generation, validation, and response formatting
+- **Configuration** (`src/config/`): Settings management and constants
+- **API & UI** (`src/api/`): FastAPI backend and Streamlit interface
+- **Utilities** (`src/utils/`): Data loading, telemetry, and vector storage
+
+#### File Structure
+
+```
+src/
+├── __init__.py              # Main package interface exposing chat()
+├── core/                    # Core agent functionality
+│   ├── __init__.py
+│   ├── agent.py            # Main chat interface (65 lines)
+│   ├── types.py            # Type definitions (AgentState, etc.)
+│   └── workflow.py         # LangGraph workflow orchestration
+├── llm/                     # LLM and AI functionality
+│   ├── __init__.py
+│   ├── classification.py   # Question categorization (routing logic)
+│   └── llm.py              # LLM initialization & utilities
+├── database/                # Database operations
+│   ├── __init__.py
+│   └── database.py         # MongoDB connection & query execution
+├── query/                   # Query generation & processing
+│   ├── __init__.py
+│   ├── query_generation.py # Query creation, validation & retry logic
+│   └── response_formatting.py # Natural language response formatting
+├── config/                  # Configuration & constants
+│   ├── __init__.py
+│   ├── config.py           # Settings management (env vars, etc.)
+│   └── constants.py        # Prompts, enums, schema definitions
+├── utils/                   # Utility functions
+│   ├── __init__.py
+│   ├── data_loader.py      # CSV → MongoDB ingestion
+│   ├── telemetry.py        # Logging & tracing (LangSmith integration)
+│   └── vector_store.py     # Chroma vector DB for reference docs
+└── api/                     # API & UI components
+    ├── __init__.py
+    ├── server.py           # FastAPI backend (/chat, /health endpoints)
+    └── ui.py               # Streamlit chat interface
+```
+
+#### Key Design Patterns
+
+- **Modular Architecture**: Each folder contains focused, single-responsibility modules
+- **Dependency Injection**: Clean separation between LLM, database, and business logic
+- **Error Handling**: Comprehensive validation and retry mechanisms for query generation
+- **Observability**: Built-in telemetry with LangSmith tracing for debugging
+- **Testability**: Modular design enables isolated unit testing
+
+#### Data Flow
+
+1. **User Input** → `src/api/server.py` (FastAPI endpoint)
+2. **Question Classification** → `src/llm/classification.py` (routes to appropriate handler)
+3. **Query Generation** → `src/query/query_generation.py` (LLM creates MongoDB pipeline)
+4. **Database Execution** → `src/database/database.py` (executes aggregation pipeline)
+5. **Response Formatting** → `src/query/response_formatting.py` (converts results to natural language)
+6. **Final Response** → User via API/UI
 
 ### Docker Services
 
