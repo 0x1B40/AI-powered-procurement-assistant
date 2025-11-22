@@ -87,10 +87,6 @@ Guidelines:
 - Always return JSON array of aggregation stages, even for simple queries.
 """
 
-SMALLTALK_PATTERNS = re.compile(
-    r"\b(hi|hello|hey|thanks?|thank you|good morning|good afternoon|good evening|how are you)\b",
-    re.IGNORECASE,
-)
 
 
 CLASSIFIER_PROMPT = """You are an intent classifier for the California procurement assistant.
@@ -113,13 +109,6 @@ OUT_OF_SCOPE_RESPONSE = (
     "I'm focused on generating procurement MongoDB queries, describing the "
     "dataset, and explaining acquisition methods. Please ask about those topics."
 )
-
-
-def is_smalltalk(text: str) -> bool:
-    stripped = (text or "").strip()
-    if not stripped:
-        return True
-    return bool(SMALLTALK_PATTERNS.search(stripped)) and len(stripped.split()) <= 6
 
 
 def _coerce_confidence(value: Any) -> Optional[float]:
@@ -151,7 +140,7 @@ def _parse_question_category(response_text: str) -> Tuple[Optional[QuestionCateg
 
 def categorize_question(text: str, llm: Optional[Any] = None) -> Tuple[QuestionCategory, Optional[float]]:
     normalized = (text or "").strip()
-    if not normalized or is_smalltalk(normalized):
+    if not normalized:
         return QuestionCategory.OUT_OF_SCOPE, None
 
     prompt = CLASSIFIER_PROMPT.format(question=normalized)

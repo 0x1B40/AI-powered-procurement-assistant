@@ -95,8 +95,16 @@ def test_categorize_question_detects_acquisition_methods():
 
 
 def test_categorize_question_detects_out_of_scope():
-    mock_llm = MagicMock()
+    mock_llm = _mock_classifier_llm("out_of_scope", 0.85)
     category, confidence = categorize_question("Hello there, how's your day?", llm=mock_llm)
+    assert category == QuestionCategory.OUT_OF_SCOPE
+    mock_llm.invoke.assert_called_once()
+    assert confidence == 0.85
+
+
+def test_categorize_question_handles_empty_input():
+    mock_llm = MagicMock()
+    category, confidence = categorize_question("", llm=mock_llm)
     assert category == QuestionCategory.OUT_OF_SCOPE
     mock_llm.invoke.assert_not_called()
     assert confidence is None
