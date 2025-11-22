@@ -22,8 +22,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Copy source code and helper scripts
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Change ownership to non-root user
 RUN chown -R app:app /app
