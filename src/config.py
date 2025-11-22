@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     mongodb_uri: str = Field(env="MONGODB_URI")
     mongodb_db: str = Field(env="MONGODB_DB", default="california_procurement")
     mongodb_collection: str = Field(env="MONGODB_COLLECTION", default="purchase_orders")
+    reference_docs_dir: Path = Field(default=Path("data"), env="REFERENCE_DOCS_DIR")
+    vector_store_dir: Path = Field(default=Path("data/reference_index"), env="VECTOR_STORE_DIR")
+    vector_collection_name: str = Field(default="procurement_reference", env="VECTOR_COLLECTION_NAME")
+    embedding_model_name: str = Field(
+        default="sentence-transformers/all-MiniLM-L6-v2", env="EMBEDDING_MODEL_NAME"
+    )
+    embedding_device: str = Field(default="cpu", env="EMBEDDING_DEVICE")
+    reference_chunk_size: int = Field(default=1000, env="REFERENCE_CHUNK_SIZE")
+    reference_chunk_overlap: int = Field(default=150, env="REFERENCE_CHUNK_OVERLAP")
 
     primary_llm_api_key: str | None = Field(default=None, env="PRIMARY_LLM_API_KEY")
     primary_llm_model: str = Field(default="grok-4-1-fast-non-reasoning", env="PRIMARY_LLM_MODEL")

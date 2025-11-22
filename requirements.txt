@@ -14,6 +14,10 @@ langchain-core==0.3.79
 langchain-text-splitters==0.3.11
 langgraph==0.2.59
 langsmith==0.4.37
+chromadb==0.5.5
+sentence-transformers==3.0.1
+pypdf==4.3.1
+python-docx==1.1.2
 
 # Data analysis and visualization
 matplotlib==3.9.0
