@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from pydantic import Field
+from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings
 
 # Resolve the `.env` file once and only load it when we can actually read it.
@@ -23,6 +24,23 @@ class Settings(BaseSettings):
     primary_llm_model: str = Field(default="grok-4-1-fast-non-reasoning", env="PRIMARY_LLM_MODEL")
     primary_llm_temperature: float = Field(default=0.1, env="PRIMARY_LLM_TEMPERATURE")
     primary_llm_base_url: str | None = Field(default=None, env="PRIMARY_LLM_BASE_URL")
+
+    langsmith_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGCHAIN_API_KEY", "LANGSMITH_API_KEY"),
+    )
+    langsmith_project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGCHAIN_PROJECT", "LANGSMITH_PROJECT"),
+    )
+    langsmith_endpoint: str | None = Field(
+        default="https://api.smith.langchain.com",
+        validation_alias=AliasChoices("LANGCHAIN_ENDPOINT", "LANGSMITH_ENDPOINT"),
+    )
+    langsmith_tracing_v2: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LANGCHAIN_TRACING_V2", "LANGSMITH_TRACING_V2"),
+    )
 
     class Config:
         env_file = _ENV_FILE
@@ -50,6 +68,37 @@ class Settings(BaseSettings):
     def llm_base_url(self) -> str | None:
         """Optional override so we can talk to non-OpenAI-compatible endpoints (e.g., xAI)."""
         return self.primary_llm_base_url
+
+    def model_post_init(self, __context: Any) -> None:  # type: ignore[override]
+        super().model_post_init(__context)
+        self._export_langsmith_env()
+
+    def _export_langsmith_env(self) -> None:
+        """Propagate LangSmith-specific settings into the actual environment."""
+
+        def _set_env(var_name: str, value: str | None) -> None:
+            if value and not os.getenv(var_name):
+                os.environ[var_name] = value
+
+        # API key compatibility (older docs still refer to LANGCHAIN_* variables)
+        if self.langsmith_api_key:
+            _set_env("LANGCHAIN_API_KEY", self.langsmith_api_key)
+            _set_env("LANGSMITH_API_KEY", self.langsmith_api_key)
+
+        if self.langsmith_project:
+            _set_env("LANGCHAIN_PROJECT", self.langsmith_project)
+            _set_env("LANGSMITH_PROJECT", self.langsmith_project)
+
+        if self.langsmith_tracing_v2:
+            _set_env("LANGCHAIN_TRACING_V2", "true")
+            _set_env("LANGSMITH_TRACING_V2", "true")
+
+        endpoint_was_overridden = (
+            "langsmith_endpoint" in self.model_fields_set and self.langsmith_endpoint
+        )
+        if endpoint_was_overridden:
+            _set_env("LANGCHAIN_ENDPOINT", self.langsmith_endpoint)
+            _set_env("LANGSMITH_ENDPOINT", self.langsmith_endpoint)
 
 
 @lru_cache

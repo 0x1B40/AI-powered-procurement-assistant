@@ -15,6 +15,7 @@ from pymongo.collection import Collection
 from pymongo.errors import OperationFailure
 
 from .config import get_settings
+from .telemetry import traceable_step, log_child_run
 
 # Importing ChatOpenAI eagerly causes SSL context creation, which can fail inside
 # restricted CI sandboxes. We import it lazily in _get_llm(), but still want type
@@ -141,6 +142,7 @@ def _build_retry_instruction(question: str, error_message: str, previous_output:
     )
 
 
+@traceable_step(name="execute_mongodb_query", run_type="tool", tags=["mongodb"])
 @tool
 def execute_mongodb_query(query: str) -> str:
     """
@@ -228,6 +230,7 @@ Average spend for IT Goods in 2014-2015:
 """
 
 
+@traceable_step(name="analyze_question", tags=["query-generation"])
 def analyze_question(state: AgentState) -> Dict[str, Any]:
     """Analyze the question and generate MongoDB query."""
     messages = state["messages"]
@@ -244,8 +247,17 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
 
     for attempt in range(MAX_QUERY_ATTEMPTS):
         messages: List[BaseMessage] = [system_message]
+        attempt_inputs: Dict[str, Any] = {
+            "question": question,
+            "system_prompt": prompt,
+            "attempt": attempt + 1,
+        }
+
         if attempt > 0:
             retry_instruction = _build_retry_instruction(question, error_msg, previous_output)
+            attempt_inputs["retry_instruction"] = retry_instruction
+            if previous_output:
+                attempt_inputs["previous_output"] = _truncate(previous_output)
             messages.append(HumanMessage(content=retry_instruction))
 
         response = llm.invoke(messages)
@@ -253,11 +265,28 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
         previous_output = query_text
 
         is_valid, pipeline_or_error = validate_pipeline_text(query_text)
+        attempt_metadata = {"attempt": attempt + 1, "max_attempts": MAX_QUERY_ATTEMPTS}
+
         if is_valid:
             pipeline = pipeline_or_error
+            log_child_run(
+                name="pipeline_generation_attempt",
+                inputs=attempt_inputs,
+                outputs={"raw_response": query_text, "pipeline": pipeline},
+                metadata=attempt_metadata,
+                tags=["pipeline-attempt"],
+            )
             break
 
         error_msg = pipeline_or_error if isinstance(pipeline_or_error, str) else "Invalid query format."
+        log_child_run(
+            name="pipeline_generation_attempt",
+            inputs=attempt_inputs,
+            outputs={"raw_response": query_text},
+            metadata=attempt_metadata,
+            tags=["pipeline-attempt"],
+            error=error_msg,
+        )
 
     if pipeline is None:
         final_error = error_msg or "Failed to generate a valid MongoDB pipeline."
@@ -274,6 +303,7 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
     }
 
 
+@traceable_step(name="format_response", tags=["answer-rendering"])
 def format_response(state: AgentState) -> Dict[str, Any]:
     """Format the final response for the user."""
     llm = _get_llm()
@@ -327,6 +357,7 @@ def get_procurement_agent():
     return _procurement_agent
 
 
+@traceable_step(name="procurement_chat", tags=["chat-entrypoint"])
 def chat(question: str, context: Dict | None = None) -> str:
     """Generate a MongoDB-grounded answer for a procurement question using LangChain and LangGraph."""
     try:

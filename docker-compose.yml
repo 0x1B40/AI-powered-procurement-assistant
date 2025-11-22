@@ -32,6 +32,11 @@ services:
       PRIMARY_LLM_MODEL: ${PRIMARY_LLM_MODEL:-grok-4-1-fast-non-reasoning}
       PRIMARY_LLM_TEMPERATURE: ${PRIMARY_LLM_TEMPERATURE:-0.1}
       PRIMARY_LLM_BASE_URL: ${PRIMARY_LLM_BASE_URL:-https://api.x.ai/v1}
+      # LangSmith configuration
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-procurement-agent-debug}
+      LANGCHAIN_ENDPOINT: ${LANGCHAIN_ENDPOINT:-https://api.smith.langchain.com}
     ports:
       - "8000:8000"
     depends_on:

@@ -150,6 +150,25 @@ Sample prompts you can use once the system is running:
 - "List the top 5 most frequently ordered line items."
 - "What's the average order amount for technology-related purchases in 2013?"
 
+### LangSmith debugging (optional)
+
+LangSmith tracing is wired into the MongoDB agent so you can inspect every prompt, retry, and aggregation pipeline that gets executed.
+
+1. [Create a LangSmith account](https://smith.langchain.com/) and an API key.
+2. Copy `.env.example` to `.env` (if you have not already) and set:
+   - `LANGCHAIN_TRACING_V2=true`
+   - `LANGCHAIN_API_KEY=<your key>`
+   - `LANGCHAIN_PROJECT=procurement-agent-debug` (or any project name you prefer)
+3. Start the app as usual (`docker-compose up` or `python run_local.py`).
+
+Each `/chat` request now shows up in LangSmith with nested runs for:
+- `procurement_chat` (top-level FastAPI request)
+- `analyze_question` with per-attempt metadata showing the MongoDB prompt, model output, and validation errors
+- `execute_mongodb_query` tool calls (captures the final pipeline)
+- `format_response` (LLM that narrates the final answer)
+
+Use these traces to debug malformed aggregation pipelines, replay prompts, and compare different prompt/model settings safely.
+
 ### Deliverables Checklist
 
 - [x] Data loader and MongoDB schema definition.
