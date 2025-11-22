@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from enum import Enum
 from functools import lru_cache
-from typing import Dict, Any, List, TypedDict, Annotated, Tuple, TYPE_CHECKING
+from typing import Dict, Any, List, TypedDict, Annotated, Tuple, TYPE_CHECKING, Optional
 from datetime import datetime
 
 from langchain_core.tools import tool, BaseTool
@@ -100,7 +101,9 @@ Categorize the user's message into exactly one of these values:
 - "acquisition_methods": the user is asking about acquisition_type, acquisition_method, or procurement method definitions/usages.
 - "out_of_scope": greetings, chit-chat, or any request unrelated to procurement data, the schema, or acquisition methods.
 
-Return ONLY a JSON object like {{"category": "query_generation"}}:
+Return ONLY a JSON object like {{"category": "query_generation", "confidence": 0.87}}:
+- "category" must be one of the allowed strings.
+- "confidence" must be a number between 0 and 1 indicating your certainty.
 
 QUESTION:
 {question}
@@ -119,25 +122,37 @@ def is_smalltalk(text: str) -> bool:
     return bool(SMALLTALK_PATTERNS.search(stripped)) and len(stripped.split()) <= 6
 
 
-def _parse_question_category(response_text: str) -> Optional[QuestionCategory]:
+def _coerce_confidence(value: Any) -> Optional[float]:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(confidence):
+        return None
+    return max(0.0, min(1.0, confidence))
+
+
+def _parse_question_category(response_text: str) -> Tuple[Optional[QuestionCategory], Optional[float]]:
     cleaned = _strip_code_fences(response_text)
     try:
         payload = json.loads(cleaned)
         raw_value = payload.get("category", "")
+        confidence = _coerce_confidence(payload.get("confidence"))
     except json.JSONDecodeError:
         raw_value = cleaned
+        confidence = None
 
     normalized = (raw_value or "").strip().lower()
     for category in QuestionCategory:
         if normalized == category.value:
-            return category
-    return None
+            return category, confidence
+    return None, confidence
 
 
-def categorize_question(text: str, llm: Optional[Any] = None) -> QuestionCategory:
+def categorize_question(text: str, llm: Optional[Any] = None) -> Tuple[QuestionCategory, Optional[float]]:
     normalized = (text or "").strip()
     if not normalized or is_smalltalk(normalized):
-        return QuestionCategory.OUT_OF_SCOPE
+        return QuestionCategory.OUT_OF_SCOPE, None
 
     prompt = CLASSIFIER_PROMPT.format(question=normalized)
     llm = llm or _get_llm()
@@ -145,10 +160,10 @@ def categorize_question(text: str, llm: Optional[Any] = None) -> QuestionCategor
     try:
         response = llm.invoke([SystemMessage(content=prompt)])
     except Exception:
-        return QuestionCategory.OUT_OF_SCOPE
+        return QuestionCategory.OUT_OF_SCOPE, None
 
-    category = _parse_question_category(response.content)
-    return category or QuestionCategory.OUT_OF_SCOPE
+    category, confidence = _parse_question_category(response.content)
+    return (category or QuestionCategory.OUT_OF_SCOPE, confidence)
 
 
 def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, Any]]]:
@@ -395,8 +410,17 @@ def classify_question(state: AgentState) -> Dict[str, Any]:
     """Categorize the incoming user question before running expensive steps."""
     messages = state.get("messages", [])
     question = messages[-1].content if messages else ""
-    category = categorize_question(question)
-    return {"question_category": category.value}
+    category, confidence = categorize_question(question)
+    log_child_run(
+        name="question_classifier",
+        inputs={"question": question},
+        outputs={"category": category.value, "confidence": confidence},
+        tags=["classifier"],
+    )
+    return {
+        "question_category": category.value,
+        "classification_confidence": confidence,
+    }
 
 
 @traceable_step(name="handle_out_of_scope", tags=["routing"])
@@ -404,8 +428,9 @@ def handle_out_of_scope(state: AgentState) -> Dict[str, Any]:
     """Return a formal response whenever the prompt is out of scope."""
     return {
         "mongodb_results": [],
-        "final_answer": "I'm focused on generating procurement MongoDB queries, describing the dataset, and explaining acquisition methods. Please ask about those topics.",
+        "final_answer": OUT_OF_SCOPE_RESPONSE,
         "question_category": state.get("question_category", QuestionCategory.OUT_OF_SCOPE.value),
+        "classification_confidence": state.get("classification_confidence"),
     }
 
 
