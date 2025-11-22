@@ -92,11 +92,63 @@ SMALLTALK_PATTERNS = re.compile(
 )
 
 
+CLASSIFIER_PROMPT = """You are an intent classifier for the California procurement assistant.
+
+Categorize the user's message into exactly one of these values:
+- "query_generation": the user wants analytics or MongoDB query results over procurement data.
+- "database_info": the user is asking about the dataset schema, metadata, or data dictionary.
+- "acquisition_methods": the user is asking about acquisition_type, acquisition_method, or procurement method definitions/usages.
+- "out_of_scope": greetings, chit-chat, or any request unrelated to procurement data, the schema, or acquisition methods.
+
+Return ONLY a JSON object like {{"category": "query_generation"}}:
+
+QUESTION:
+{question}
+"""
+
+OUT_OF_SCOPE_RESPONSE = (
+    "I'm focused on generating procurement MongoDB queries, describing the "
+    "dataset, and explaining acquisition methods. Please ask about those topics."
+)
+
+
 def is_smalltalk(text: str) -> bool:
     stripped = (text or "").strip()
     if not stripped:
         return True
     return bool(SMALLTALK_PATTERNS.search(stripped)) and len(stripped.split()) <= 6
+
+
+def _parse_question_category(response_text: str) -> Optional[QuestionCategory]:
+    cleaned = _strip_code_fences(response_text)
+    try:
+        payload = json.loads(cleaned)
+        raw_value = payload.get("category", "")
+    except json.JSONDecodeError:
+        raw_value = cleaned
+
+    normalized = (raw_value or "").strip().lower()
+    for category in QuestionCategory:
+        if normalized == category.value:
+            return category
+    return None
+
+
+def categorize_question(text: str, llm: Optional[Any] = None) -> QuestionCategory:
+    normalized = (text or "").strip()
+    if not normalized or is_smalltalk(normalized):
+        return QuestionCategory.OUT_OF_SCOPE
+
+    prompt = CLASSIFIER_PROMPT.format(question=normalized)
+    llm = llm or _get_llm()
+
+    try:
+        response = llm.invoke([SystemMessage(content=prompt)])
+    except Exception:
+        return QuestionCategory.OUT_OF_SCOPE
+
+    category = _parse_question_category(response.content)
+    return category or QuestionCategory.OUT_OF_SCOPE
 
 
 def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, Any]]]:
@@ -343,8 +395,7 @@ def classify_question(state: AgentState) -> Dict[str, Any]:
     """Categorize the incoming user question before running expensive steps."""
     messages = state.get("messages", [])
     question = messages[-1].content if messages else ""
-    # Placeholder for now - will be implemented in next commit
-    category = QuestionCategory.OUT_OF_SCOPE
+    category = categorize_question(question)
     return {"question_category": category.value}
 
 
