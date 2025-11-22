@@ -21,7 +21,13 @@ This repository contains a prototype AI agent that converts natural-language pro
    docker-compose exec app python -m src.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
    ```
 
-4. **Access the application**
+4. **Build the reference vector store**
+   ```bash
+   docker-compose exec app python -m scripts.build_reference_store --docs-dir data/
+   ```
+   This indexes any PDF/DOCX guidance stored under `data/` (e.g., the acquisition method memo or data dictionary) into Chroma so the agent can cite them later.
+
+5. **Access the application**
    - **Streamlit UI**: http://localhost:8501
    - **FastAPI backend**: http://localhost:8000
    - **API docs**: http://localhost:8000/docs
@@ -58,6 +64,9 @@ This repository contains a prototype AI agent that converts natural-language pro
    ```bash
    # Load data (optional - requires MongoDB running)
    python -m src.data_loader --csv "PURCHASE ORDER DATA EXTRACT.csv"
+
+   # Build/refresh the reference vector store (scans data/ by default)
+   python -m scripts.build_reference_store --docs-dir data/
 
    # Backend (in one terminal)
    uvicorn src.server:app --reload
@@ -101,6 +110,7 @@ activate.bat ui
 - `src/server.py` — FastAPI app exposing `/chat` and `/health`.
 - `src/ui.py` — Streamlit chat client that calls the backend.
 - `notebooks/eda.ipynb` — exploratory data analysis notebook.
+- `scripts/build_reference_store.py` — CLI helper to ingest documentation into the Chroma vector DB.
 
 ### Docker Services
 
@@ -140,6 +150,13 @@ For Docker usage, place your data files in the `data/` directory:
 
 - `docs/data_schema.md` — canonical schema reference covering every column, data type, and known data-quality caveats.
 - `python scripts/validate_mongodb_schema.py --expected-count 919734 --sample-size 500` — quick health check to confirm MongoDB ingestion completeness and field coverage.
+
+### Reference Document Retrieval
+
+- `scripts/build_reference_store.py` walks all PDF/DOCX files inside `REFERENCE_DOCS_DIR` (defaults to `data/`) and chunks them into a persistent Chroma DB located at `VECTOR_STORE_DIR`.
+- Runtime questions classified as `database_info` or `acquisition_methods` are answered directly from the retrieved passages instead of running MongoDB queries.
+- Customize ingestion via environment variables or pass `--docs-dir` / `--persist-dir` flags when running the script (e.g., `python -m scripts.build_reference_store --docs-dir .` if your guidance lives in the repo root).
+- Re-run the script whenever you add or edit documentation so embeddings stay in sync.
 
 ### Testing Queries
 
