@@ -8,7 +8,7 @@ from typing import Iterable
 import pandas as pd
 from pymongo import MongoClient
 
-from ..config.config import get_settings
+from ..config_and_constants.config import get_settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")

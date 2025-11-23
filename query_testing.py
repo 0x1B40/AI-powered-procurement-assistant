@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 
 # Import your data loading functions
-from src.data_loader import snake_case, sanitize_currency_series, normalize_chunk
+from src.utils.data_loader import snake_case, sanitize_currency_series, normalize_chunk
 
 def load_csv_to_dataframe(csv_path: Path, sample_size: int = None) -> pd.DataFrame:
     """Load CSV into pandas DataFrame using the same logic as data_loader.py"""

@@ -9,7 +9,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import OperationFailure
 
-from ..config.config import get_settings
+from ..config_and_constants.config import get_settings
 
 
 @lru_cache

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import HumanMessage
 
-from src.agent import (
+from src.core.agent import (
     QuestionCategory,
     analyze_question,
     categorize_question,

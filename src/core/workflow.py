@@ -6,11 +6,11 @@ from typing import Dict, Any
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 
-from ..llm.classification import categorize_question
-from ..config.constants import REFERENCE_CATEGORIES, QuestionCategory, OUT_OF_SCOPE_RESPONSE
+from ..llm_and_classification.classification import categorize_question
+from ..config_and_constants.constants import REFERENCE_CATEGORIES, QuestionCategory, OUT_OF_SCOPE_RESPONSE
 from ..database.database import execute_mongodb_query
-from ..query.query_generation import generate_mongodb_query
-from ..query.response_formatting import format_response
+from ..query_and_response.query_generation import generate_mongodb_query
+from ..query_and_response.response_formatting import format_response
 from ..utils.telemetry import traceable_step, log_child_run
 from .types import AgentState
 from ..utils.vector_store import retrieve_reference_chunks

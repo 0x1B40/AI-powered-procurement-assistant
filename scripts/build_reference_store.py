@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from src.vector_store import build_reference_vector_store
+from src.utils.vector_store import build_reference_vector_store
 
 
 def parse_args() -> argparse.Namespace:

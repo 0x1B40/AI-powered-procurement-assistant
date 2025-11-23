@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from ..config.constants import QuestionCategory, CLASSIFIER_PROMPT
+from ..config_and_constants.constants import QuestionCategory, CLASSIFIER_PROMPT
 from .llm import get_llm
 
 

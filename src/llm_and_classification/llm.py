@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import TYPE_CHECKING, Optional
 
-from ..config.config import get_settings
+from ..config_and_constants.config import get_settings
 
 # Importing ChatOpenAI eagerly causes SSL context creation, which can fail inside
 # restricted CI sandboxes. We import it lazily in _get_llm(), but still want type

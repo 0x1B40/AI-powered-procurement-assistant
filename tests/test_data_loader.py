@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from src.data_loader import snake_case, normalize_chunk, sanitize_currency_series
+from src.utils.data_loader import snake_case, normalize_chunk, sanitize_currency_series
 
 
 class TestDataLoader:
@@ -97,7 +97,7 @@ class TestDataLoader:
 
         # Test that the function can be called without errors
         # (Full integration test would require actual CSV file and MongoDB)
-        from src.data_loader import load_csv
+        from src.utils.data_loader import load_csv
         from pathlib import Path
 
         # This would normally load a CSV, but we're just testing the setup
