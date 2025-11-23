@@ -69,10 +69,10 @@ This repository contains a prototype AI agent that converts natural-language pro
    python -m scripts.build_reference_store --docs-dir data/
 
    # Backend (in one terminal)
-   uvicorn src.server:app --reload
+   uvicorn src.api.server:app --reload
 
    # Frontend (in another terminal)
-   streamlit run src/ui.py
+   streamlit run src/api/ui.py
    ```
 
 6. **Run tests**
