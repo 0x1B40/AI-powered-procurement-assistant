@@ -136,7 +136,7 @@ def create_procurement_agent():
 
     # Add nodes
     workflow.add_node("classify_question", classify_question_node)
-    workflow.add_node("analyze_question", analyze_question_node)
+    workflow.add_node("analyze_question", analyze_question)
     workflow.add_node("format_response", format_response_node)
     workflow.add_node("handle_out_of_scope", handle_out_of_scope)
 
