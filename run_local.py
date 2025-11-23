@@ -25,13 +25,14 @@ def main():
     # Check if .env file exists
     if not Path('.env').exists():
         print("📝 Creating .env file from template...")
-        env_example = Path('env.example')
-        if env_example.exists():
-            env_content = env_example.read_text()
-            Path('.env').write_text(env_content)
-            print("   Created .env file. Please edit it with your configuration.")
+        for candidate in ("example.env", "env.example"):
+            env_template = Path(candidate)
+            if env_template.exists():
+                Path('.env').write_text(env_template.read_text())
+                print(f"   Created .env from {candidate}. Please edit it with your configuration.")
+                break
         else:
-            print("   env.example not found. Please create .env manually.")
+            print("   No env template found. Please create .env manually.")
 
     print("🚀 Starting Procurement Assistant locally...")
     print("   FastAPI server will be available at: http://localhost:8000")
@@ -43,7 +44,7 @@ def main():
         # Run the FastAPI server
         subprocess.run([
             sys.executable, "-m", "uvicorn",
-            "src.server:app",
+            "src.api.server:app",
             "--reload",
             "--host", "0.0.0.0",
             "--port", "8000"
