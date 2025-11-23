@@ -35,7 +35,11 @@ if prompt:
         placeholder = st.empty()
         placeholder.markdown("Thinking...")
         try:
-            response = requests.post(api_url, json={"question": prompt}, timeout=120)
+            # Send conversation history for context
+            response = requests.post(api_url, json={
+                "question": prompt,
+                "conversation_history": st.session_state.messages
+            }, timeout=300)  # 5 minutes
             response.raise_for_status()
             answer = response.json()["answer"]
         except Exception as exc:  # pragma: no cover

@@ -17,7 +17,7 @@ REFERENCE_CATEGORIES = {
 
 SCHEMA_FIELDS = """
 Important fields (MongoDB collection `purchase_orders`):
-- purchase_order_number (string) — unique order id; multiple rows per PO possible
+- purchase_order_number (string) — unique order id; multiple rows per PO possible. When counting "orders", group by this field to get unique purchase orders.
 - department_name (string) — ordering agency name
 - supplier_name (string), supplier_code (string) — vendor metadata
 - acquisition_type / acquisition_method / sub_acquisition_method (string) — procurement classifications

@@ -95,6 +95,7 @@ Instructions:
 - Date filters use $match on creation_date or fiscal_year strings.
 - For counts, use $count or $group with $sum: 1.
 - Department/supplier names use exact string matching - use the full official name format (e.g., "Consumer Affairs, Department of", not "Department of Consumer Affairs").
+- For questions about data ranges or "what years/periods does the data cover?", find min/max dates using $dateFromString and $year/$month functions.
 - NEVER use $$ROOT, $out, $merge, or stages that return the full document as a field.
 - If the question asks for text explanation without data (e.g., greetings), return an empty array [].
 
@@ -143,6 +144,22 @@ Step-by-step reasoning:
 2. Count the matching documents
 Query: [{{"$match": {{"creation_date": {{"$regex": "2014"}}}}}}, {{"$count": "orders_in_2014"}}]
 
+Example 6.5: "How many orders were created in the first quarter of 2014?"
+Step-by-step reasoning:
+1. First quarter of 2014 is January-March (01-03)
+2. Filter creation_date using regex for months 01, 02, 03 and year 2014
+3. Group by purchase_order_number to count unique orders (since multiple rows per PO)
+4. Count the unique purchase orders
+Query: [{{"$match": {{"creation_date": {{"$regex": "^(0[1-3])/\\d{{2}}/2014$"}}}}}}, {{"$group": {{"_id": "$purchase_order_number"}}}}, {{"$count": "orders_q1_2014"}}]
+
+Example 6.6: "How many orders were created in the last quarter of 2013?"
+Step-by-step reasoning:
+1. Last quarter of 2013 is October-December (10-12)
+2. Filter creation_date using regex for months 10, 11, 12 and year 2013
+3. Group by purchase_order_number to count unique orders (since multiple rows per PO)
+4. Count the unique purchase orders
+Query: [{{"$match": {{"creation_date": {{"$regex": "^(1[0-2])/\\d{{2}}/2013$"}}}}}}, {{"$group": {{"_id": "$purchase_order_number"}}}}, {{"$count": "orders_q4_2013"}}]
+
 Example 7: "What are the largest 5 orders with supplier and department details?"
 Step-by-step reasoning:
 1. Sort all documents by total_price descending
@@ -168,10 +185,20 @@ Step-by-step reasoning:
 2. Count the groups
 Query: [{{"$group": {{"_id": "$purchase_order_number"}}}}, {{"$count": "unique_purchase_orders"}}]
 
+Example 11: "What years does the purchase order data cover?"
+
+Step-by-step reasoning:
+
+1. Extract years from creation_date using $dateFromString and $year
+
+2. Find minimum and maximum years
+
+Query: [{{"$group": {{"_id": null, "min_year": {{"$min": {{"$year": {{"$dateFromString": {{"dateString": "$creation_date", "format": "%m/%d/%Y"}}}}}}}}, "max_year": {{"$max": {{"$year": {{"$dateFromString": {{"dateString": "$creation_date", "format": "%m/%d/%Y"}}}}}}}}}}, {{"$project": {{"_id": 0, "data_range": {{"$concat": [{{"$toString": "$min_year"}}, " to ", {{"$toString": "$max_year"}}]}}}}}}]
+
 Complex Multi-Stage Examples:
 ============================
 
-Example 11: "Top 3 suppliers by total spend in each fiscal year"
+Example 12: "Top 3 suppliers by total spend in each fiscal year"
 Step-by-step reasoning:
 1. Group by fiscal_year and supplier_name, sum total_price
 2. Sort within each fiscal year group by total_spend
@@ -179,7 +206,7 @@ Step-by-step reasoning:
 4. Unwind to flatten results
 Query: [{{"$group": {{"_id": {{"fiscal_year": "$fiscal_year", "supplier": "$supplier_name"}}, "total_spend": {{"$sum": "$total_price"}}}}}}, {{"$sort": {{"_id.fiscal_year": 1, "total_spend": -1}}}}, {{"$group": {{"_id": "$_id.fiscal_year", "suppliers": {{"$push": {{"supplier_name": "$_id.supplier", "total_spend": "$total_spend"}}}}}}}}, {{"$project": {{"fiscal_year": "$_id", "top_suppliers": {{"$slice": ["$suppliers", 3]}}, "_id": 0}}}}]
 
-Example 12: "Monthly spend trends for 2014"
+Example 13: "Monthly spend trends for 2014"
 Step-by-step reasoning:
 1. Filter for 2014 in creation_date
 2. Add month field using $dateFromString and $month
@@ -187,7 +214,7 @@ Step-by-step reasoning:
 4. Sort by month
 Query: [{{"$match": {{"creation_date": {{"$regex": "2014"}}}}}}, {{"$addFields": {{"month": {{"$month": {{"$dateFromString": {{"dateString": "$creation_date", "format": "%m/%d/%Y"}}}}}}}}}}, {{"$group": {{"_id": "$month", "monthly_spend": {{"$sum": "$total_price"}}}}}}, {{"$sort": {{"_id": 1}}}}, {{"$project": {{"month": "$_id", "total_spend": "$monthly_spend", "_id": 0}}}}]
 
-Example 13: "Departments with above-average spend in IT Goods"
+Example 14: "Departments with above-average spend in IT Goods"
 Step-by-step reasoning:
 1. Filter for IT Goods
 2. Calculate overall average spend
@@ -200,7 +227,7 @@ Now generate the MongoDB aggregation pipeline for the question above.
 """
 
 
-def generate_mongodb_query(question: str) -> Optional[List[Dict[str, Any]]]:
+def generate_mongodb_query(question: str, max_attempts: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
     """Generate and validate a MongoDB query pipeline."""
     llm = get_llm()
 
@@ -211,7 +238,8 @@ def generate_mongodb_query(question: str) -> Optional[List[Dict[str, Any]]]:
     error_msg = ""
     previous_output = ""
 
-    for attempt in range(MAX_QUERY_ATTEMPTS):
+    attempts = max_attempts or MAX_QUERY_ATTEMPTS
+    for attempt in range(attempts):
         messages = [system_message]
         attempt_inputs = {
             "question": question,

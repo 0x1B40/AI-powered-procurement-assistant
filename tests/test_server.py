@@ -15,14 +15,14 @@ class TestServer:
 
     @patch('src.api.server.agent.chat')
     def test_chat_endpoint_success(self, mock_chat):
-        mock_chat.return_value = "Query result: [{\"count\": 150}]"
+        mock_chat.return_value = ("Query result: [{\"count\": 150}]", [])
 
         payload = {"question": "How many purchase orders were created in Q3 2014?"}
         response = self.client.post("/chat", json=payload)
 
         assert response.status_code == 200
         assert response.json() == {"answer": "Query result: [{\"count\": 150}]"}
-        mock_chat.assert_called_once_with("How many purchase orders were created in Q3 2014?")
+        mock_chat.assert_called_once_with("How many purchase orders were created in Q3 2014?", [])
 
     def test_chat_endpoint_validation_error(self):
         # Test with empty question
@@ -31,7 +31,7 @@ class TestServer:
         assert response.status_code == 422  # Validation error
 
         # Test with minimal valid question (should hit agent layer)
-        with patch('src.api.server.agent.chat', return_value="OK"):
+        with patch('src.api.server.agent.chat', return_value=("OK", [])):
             payload = {"question": "Hi"}
             response = self.client.post("/chat", json=payload)
             assert response.status_code == 200

@@ -13,3 +13,4 @@ class AgentState(TypedDict):
     final_answer: str
     question_category: str
     classification_confidence: Optional[float]
+    relevant_conversation_history: List[Dict[str, Any]]
