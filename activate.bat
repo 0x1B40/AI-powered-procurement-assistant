@@ -27,13 +27,13 @@ goto end
 :server
 echo Starting FastAPI server...
 call .venv\Scripts\activate.bat
-uvicorn src.server:app --reload
+uvicorn src.api.server:app --reload
 goto end
 
 :ui
 echo Starting Streamlit UI...
 call .venv\Scripts\activate.bat
-streamlit run src.ui.py
+streamlit run src/api/ui.py
 goto end
 
 :end
