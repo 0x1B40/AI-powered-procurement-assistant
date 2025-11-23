@@ -96,6 +96,7 @@ Instructions:
 - For counts, use $count or $group with $sum: 1.
 - Department/supplier names use exact string matching - use the full official name format (e.g., "Consumer Affairs, Department of", not "Department of Consumer Affairs").
 - For questions about data ranges or "what years/periods does the data cover?", find min/max dates using $dateFromString and $year/$month functions.
+- For quarters: Use {{"$ceil": {{"$divide": [{{$month: date}}, 3]}}}} to get quarter numbers (1-4). Do NOT use invalid format specifiers like '%q' in $dateToString.
 - NEVER use $$ROOT, $out, $merge, or stages that return the full document as a field.
 - If the question asks for text explanation without data (e.g., greetings), return an empty array [].
 
