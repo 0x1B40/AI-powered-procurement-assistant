@@ -37,6 +37,10 @@ def _build_retry_instruction(question: str, error_message: str, previous_output:
         guidance = "\n\nCommon fix: Ensure each stage is a JSON object like {{'$match': {{...}}}} or {{'$group': {{...}}}}."
     elif "$sort" in error_message and "object" in error_message:
         guidance = "\n\nFor sorting: Use {{'$sort': {{'field_name': 1}}}} not {{'$sort': 'field_name'}}."
+    elif "Invalid format character" in error_message and "%q" in error_message:
+        guidance = "\n\nCommon fix: MongoDB does not support '%q' format specifier for quarters. Use arithmetic calculation instead: {{'quarter': {{'$ceil': {{'$divide': [{{'$month': date}}, 3]}}}}}}} to get quarter numbers (1-4)."
+    elif "Expecting value" in error_message or "Invalid JSON" in error_message:
+        guidance = "\n\nCommon fix: Ensure your response starts with '[' and contains valid JSON array of MongoDB aggregation stages. Do not include any text before the JSON array."
     elif "No results found" in error_message and ("department" in question.lower() or "supplier" in question.lower()):
         guidance = "\n\nCommon fix for department/supplier queries: The system will automatically try fuzzy matching for simple queries. If that fails, use exact string matching with the official name format. Common department names include 'Consumer Affairs, Department of', 'Corrections and Rehabilitation, Department of', etc. Avoid reordering words."
 
@@ -241,23 +245,36 @@ def generate_mongodb_query(question: str, max_attempts: Optional[int] = None) ->
 
     attempts = max_attempts or MAX_QUERY_ATTEMPTS
     for attempt in range(attempts):
-        messages = [system_message]
         attempt_inputs = {
             "question": question,
-            "system_prompt": prompt,
             "attempt": attempt + 1,
         }
 
-        if attempt > 0:
+        if attempt == 0:
+            # First attempt: use original system prompt
+            messages = [system_message]
+            attempt_inputs["system_prompt"] = prompt
+        else:
+            # Retry attempts: modify system prompt to include error context
             retry_instruction = _build_retry_instruction(question, error_msg, previous_output)
+            retry_prompt = f"""{prompt}
+
+RETRY ATTEMPT {attempt}: The previous response had errors. Please fix the issues and provide a valid MongoDB aggregation pipeline.
+
+{retry_instruction}"""
+            messages = [SystemMessage(content=retry_prompt)]
             attempt_inputs["retry_instruction"] = retry_instruction
             if previous_output:
                 attempt_inputs["previous_output"] = _truncate(previous_output)
-            messages.append(HumanMessage(content=retry_instruction))
 
         response = llm.invoke(messages)
         query_text = _strip_code_fences(response.content)
         previous_output = query_text
+
+        # Check for empty or whitespace-only responses
+        if not query_text or not query_text.strip():
+            error_msg = "Error: Empty response from LLM - no JSON array provided"
+            continue
 
         is_valid, pipeline_or_error = validate_pipeline_text(query_text)
 
