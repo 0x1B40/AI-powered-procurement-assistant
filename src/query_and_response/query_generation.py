@@ -39,8 +39,14 @@ def _build_retry_instruction(question: str, error_message: str, previous_output:
         guidance = "\n\nFor sorting: Use {{'$sort': {{'field_name': 1}}}} not {{'$sort': 'field_name'}}."
     elif "Invalid format character" in error_message and "%q" in error_message:
         guidance = "\n\nCommon fix: MongoDB does not support '%q' format specifier for quarters. Use arithmetic calculation instead: {{'quarter': {{'$ceil': {{'$divide': [{{'$month': date}}, 3]}}}}}}} to get quarter numbers (1-4)."
+    elif "Invalid JSON query" in error_message:
+        guidance = "\n\nJSON query is wrong OR the response included text before the JSON array. Do not include any text before the JSON array."
     elif "Expecting value" in error_message or "Invalid JSON" in error_message:
         guidance = "\n\nCommon fix: Ensure your response starts with '[' and contains valid JSON array of MongoDB aggregation stages. Do not include any text before the JSON array."
+    elif "$sortArray found an unknown argument" in error_message:
+        guidance = "\n\nCommon fix for $sortArray: Use {'$sortArray': {'input': '$field_name'}} not {'$sortArray': {'output': '$field_name'}}."
+    elif "Sorting before grouping and limiting can produce incorrect results" in error_message:
+        guidance = "\n\nFor top-N queries: Group first to aggregate data, then sort by the aggregated value, then limit. Do not sort individual documents before grouping."
     elif "No results found" in error_message and ("department" in question.lower() or "supplier" in question.lower()):
         guidance = "\n\nCommon fix for department/supplier queries: The system will automatically try fuzzy matching for simple queries. If that fails, use exact string matching with the official name format. Common department names include 'Consumer Affairs, Department of', 'Corrections and Rehabilitation, Department of', etc. Avoid reordering words."
 
@@ -66,7 +72,7 @@ def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, 
     if not pipeline:
         return False, "Error: Query pipeline is empty"
 
-    for stage in pipeline:
+    for i, stage in enumerate(pipeline):
         if not isinstance(stage, dict):
             return False, "Error: Each pipeline stage must be a JSON object"
         stage_str = json.dumps(stage)
@@ -78,6 +84,19 @@ def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, 
             sort_spec = stage["$sort"]
             if isinstance(sort_spec, str):
                 return False, f"Error: $sort specification must be an object, not a string. Use {{'$sort': {{'{sort_spec}': 1}}}} instead of {{'$sort': '{sort_spec}'}}"
+
+        # Validate $sortArray syntax - must use 'input', not 'output'
+        if "$sortArray" in stage:
+            sort_array_spec = stage["$sortArray"]
+            if isinstance(sort_array_spec, dict) and "output" in sort_array_spec:
+                return False, "Error: $sortArray must use 'input' parameter, not 'output'. Use {'$sortArray': {'input': '$field_name'}} instead."
+
+        # Validate pipeline logic: $sort before $group + $limit can be problematic
+        if "$sort" in stage and any("$group" in later_stage for later_stage in pipeline[i+1:]) and any("$limit" in later_stage for later_stage in pipeline[i+1:]):
+            group_stage_idx = next((j for j, s in enumerate(pipeline[i+1:], i+1) if "$group" in s), None)
+            limit_stage_idx = next((j for j, s in enumerate(pipeline[i+1:], i+1) if "$limit" in s), None)
+            if group_stage_idx and limit_stage_idx and group_stage_idx < limit_stage_idx:
+                return False, "Error: Sorting before grouping and limiting can produce incorrect results. For top-N queries, group first, then sort, then limit."
 
     return True, pipeline
 
