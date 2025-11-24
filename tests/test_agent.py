@@ -3,11 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import HumanMessage
 
-from src.core.agent import (
-    QuestionCategory,
-    analyze_question,
-    categorize_question,
-)
+from src.config_and_constants.constants import QuestionCategory
+from src.core.workflow import analyze_question
+from src.llm_and_classification.classification import categorize_question
 
 
 def _build_state(question: str):
@@ -28,8 +26,8 @@ def _mock_classifier_llm(category_value: str, confidence: float = 0.91):
     return mock_llm
 
 
-@patch("src.agent.execute_mongodb_query")
-@patch("src.agent._get_llm")
+@patch("src.database.database.execute_mongodb_query")
+@patch("src.llm_and_classification.llm.get_llm")
 def test_analyze_question_retries_on_invalid_json(mock_get_llm, mock_execute_query):
     mock_llm = MagicMock()
     mock_llm.invoke.side_effect = [
@@ -54,8 +52,8 @@ def test_analyze_question_retries_on_invalid_json(mock_get_llm, mock_execute_que
     assert result["final_answer"] == '[{"total_spend": 123}]'
 
 
-@patch("src.agent.execute_mongodb_query")
-@patch("src.agent._get_llm")
+@patch("src.database.database.execute_mongodb_query")
+@patch("src.llm_and_classification.llm.get_llm")
 def test_analyze_question_returns_error_after_max_retries(mock_get_llm, mock_execute_query):
     mock_llm = MagicMock()
     mock_llm.invoke.side_effect = [

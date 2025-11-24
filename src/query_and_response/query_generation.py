@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Tuple, List, Dict, Any, Optional
+from typing import Tuple, List, Dict, Any, Optional, Union
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -55,7 +55,7 @@ def _build_retry_instruction(question: str, error_message: str, previous_output:
     )
 
 
-def validate_pipeline_text(query_text: str) -> Tuple[bool, str | List[Dict[str, Any]]]:
+def validate_pipeline_text(query_text: str) -> Tuple[bool, Union[str, List[Dict[str, Any]]]]:
     try:
         pipeline = json.loads(query_text)
     except json.JSONDecodeError as exc:

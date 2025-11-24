@@ -1,11 +1,13 @@
-"""LangGraph workflow definition for the procurement agent."""
+"""Redesigned LangGraph workflow definition for the procurement agent."""
 
 import json
 from typing import Dict, Any, List
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 from ..llm_and_classification.classification import categorize_question, detect_compound_queries
 from ..llm_and_classification.llm import get_llm
@@ -17,6 +19,415 @@ from ..utils.telemetry import traceable_step, log_child_run
 from .types import AgentState
 from ..utils.vector_store import retrieve_reference_chunks
 
+
+# ===== NEW ARCHITECTURE NODES =====
+
+@traceable_step(name="input_processor", tags=["input"])
+def input_processor(state: AgentState) -> Dict[str, Any]:
+    """Process user input and initialize state for the new architecture."""
+    messages = state["messages"]
+    current_question = messages[-1].content if messages else ""
+
+    # Initialize new state fields
+    initial_state = {
+        "schema": None,
+        "sub_queries": [],
+        "results": [],
+        "current_agent": "supervisor",
+        "guardrails_status": "pending",
+        "question_category": state.get("question_category", "unknown"),
+        "classification_confidence": state.get("classification_confidence"),
+        "relevant_conversation_history": state.get("relevant_conversation_history", []),
+        "mongodb_results": [],  # For compatibility
+        "reference_context": [],
+        "final_answer": "",
+    }
+
+    log_child_run(
+        name="input_processing",
+        inputs={"question": current_question[:100]},
+        outputs={"initialized_fields": list(initial_state.keys())},
+        tags=["input"]
+    )
+
+    return initial_state
+
+
+@traceable_step(name="supervisor", tags=["coordination"])
+def supervisor_agent(state: AgentState) -> Dict[str, Any]:
+    """Supervisor agent that routes to appropriate specialized agents based on workflow state."""
+    question = state["messages"][-1].content if state["messages"] else ""
+    category = state.get("question_category", "unknown")
+    current_agent = state.get("current_agent", "query_understanding")
+    schema = state.get("schema")
+    sub_queries = state.get("sub_queries", [])
+    results = state.get("results", [])
+    guardrails_status = state.get("guardrails_status")
+
+    # Determine next step based on current workflow state
+    if current_agent == "supervisor" or current_agent == "input_processor":
+        # Initial routing - analyze the question
+        next_agent = "query_understanding"
+
+    elif current_agent == "query_understanding":
+        # After understanding, check if we need schema
+        if not schema:
+            next_agent = "fetch_schema"
+        else:
+            next_agent = "planner"
+
+    elif current_agent == "fetch_schema":
+        # After getting schema, plan the query
+        next_agent = "planner"
+
+    elif current_agent == "planner":
+        # After planning, build and execute queries
+        if sub_queries:
+            next_agent = "aggregation_builder"
+        else:
+            # Simple query, go straight to building
+            next_agent = "aggregation_builder"
+
+    elif current_agent == "aggregation_builder":
+        # After building queries, check if we have results to merge
+        if results:
+            next_agent = "merge"
+        else:
+            # No results, might need to retry or go to guardrails
+            next_agent = "guardrails"
+
+    elif current_agent == "merge":
+        # After merging, do safety checks
+        next_agent = "guardrails"
+
+    elif current_agent == "guardrails":
+        # After safety checks, generate final response
+        next_agent = "respond"
+
+    else:
+        # Default fallback
+        next_agent = "respond"
+
+    log_child_run(
+        name="supervisor_routing",
+        inputs={
+            "question": question[:100],
+            "current_agent": current_agent,
+            "has_schema": bool(schema),
+            "sub_queries_count": len(sub_queries),
+            "results_count": len(results),
+            "guardrails_status": guardrails_status
+        },
+        outputs={"next_agent": next_agent},
+        tags=["routing"]
+    )
+
+    # If we're here because an agent just completed, determine next step
+    if current_agent in ["query_understanding", "fetch_schema", "planner", "aggregation_builder", "merge", "guardrails"]:
+        # An agent just completed, determine what to do next
+        if current_agent == "query_understanding":
+            next_agent = "fetch_schema" if not schema else "planner"
+        elif current_agent == "fetch_schema":
+            next_agent = "planner"
+        elif current_agent == "planner":
+            next_agent = "aggregation_builder"
+        elif current_agent == "aggregation_builder":
+            next_agent = "merge" if results else "guardrails"
+        elif current_agent == "merge":
+            next_agent = "guardrails"
+        elif current_agent == "guardrails":
+            next_agent = "respond"
+        else:
+            next_agent = "respond"
+
+        return {"current_agent": next_agent}
+
+    # Default case
+    return {"current_agent": "query_understanding"}
+
+
+@traceable_step(name="query_understanding", tags=["analysis"])
+def query_understanding_agent(state: AgentState) -> Dict[str, Any]:
+    """Analyze and understand the user's query intent."""
+    question = state["messages"][-1].content if state["messages"] else ""
+    history = state.get("relevant_conversation_history", [])
+
+    llm = get_llm()
+
+    analysis_prompt = f"""
+    Analyze this procurement query and provide structured understanding:
+
+    Question: {question}
+
+    Conversation History:
+    {chr(10).join([f"Q: {h['request'][:100]} A: {h['response'][:200]}" for h in history[-2:]]) if history else "None"}
+
+    Provide analysis in this format:
+    INTENT: [brief description of user intent]
+    COMPLEXITY: [simple/medium/complex]
+    DOMAIN: [procurement/financial/general]
+    NEEDS_SCHEMA: [yes/no]
+    NEEDS_DECOMPOSITION: [yes/no]
+    SAFETY_CONCERNS: [none/low/medium/high]
+    """
+
+    try:
+        response = llm.invoke([SystemMessage(content=analysis_prompt)])
+        analysis = response.content.strip()
+
+        log_child_run(
+            name="query_analysis",
+            inputs={"question": question[:100]},
+            outputs={"analysis": analysis[:200]},
+            tags=["analysis"]
+        )
+
+        # Analysis complete, let supervisor determine next step
+        return {"current_agent": "query_understanding"}
+
+    except Exception as e:
+        log_child_run(
+            name="query_analysis_error",
+            inputs={"question": question[:100]},
+            outputs={"error": str(e)},
+            tags=["analysis-error"]
+        )
+        return {}
+
+
+@traceable_step(name="fetch_schema", run_type="tool", tags=["schema"])
+def fetch_schema_tool(state: AgentState) -> Dict[str, Any]:
+    """Fetch MongoDB collection schema information."""
+    # This would integrate with database to get schema
+    # For now, return a placeholder schema structure
+    schema = {
+        "collection": "purchase_orders",
+        "fields": {
+            "po_number": "string",
+            "vendor_name": "string",
+            "total_amount": "number",
+            "order_date": "date",
+            "department": "string",
+            "status": "string"
+        },
+        "indexes": ["po_number", "vendor_name", "order_date"]
+    }
+
+    log_child_run(
+        name="schema_fetch",
+        inputs={},
+        outputs={"schema_fields": len(schema.get("fields", {}))},
+        tags=["schema"]
+    )
+
+    return {"schema": schema, "current_agent": "fetch_schema"}
+
+
+@traceable_step(name="query_planner", tags=["planning"])
+def query_planner_agent(state: AgentState) -> Dict[str, Any]:
+    """Decompose complex queries into sub-queries."""
+    question = state["messages"][-1].content if state["messages"] else ""
+    schema = state.get("schema")
+
+    llm = get_llm()
+
+    planning_prompt = f"""
+    Break down this complex procurement query into simpler sub-queries:
+
+    Question: {question}
+
+    Schema available: {bool(schema)}
+
+    Generate 2-4 focused sub-queries that together answer the main question.
+    Each sub-query should be executable independently.
+
+    Format as JSON array:
+    [
+        {{"id": "sub_1", "query": "Find all purchase orders", "purpose": "Get base data"}},
+        {{"id": "sub_2", "query": "Filter by department", "purpose": "Apply filters"}}
+    ]
+    """
+
+    try:
+        response = llm.invoke([SystemMessage(content=planning_prompt)])
+        sub_queries_text = response.content.strip()
+
+        # Parse JSON response
+        try:
+            sub_queries = json.loads(sub_queries_text)
+        except json.JSONDecodeError:
+            # Fallback: create basic sub-queries
+            sub_queries = [
+                {"id": "main", "query": question, "purpose": "Main query execution"}
+            ]
+
+        log_child_run(
+            name="query_planning",
+            inputs={"question": question[:100]},
+            outputs={"sub_queries_count": len(sub_queries)},
+            tags=["planning"]
+        )
+
+        return {"sub_queries": sub_queries, "current_agent": "planner"}
+
+    except Exception as e:
+        log_child_run(
+            name="query_planning_error",
+            inputs={"question": question[:100]},
+            outputs={"error": str(e)},
+            tags=["planning-error"]
+        )
+        return {"sub_queries": [{"id": "fallback", "query": question, "purpose": "Fallback single query"}], "current_agent": "planner"}
+
+
+@traceable_step(name="aggregation_builder", tags=["query-building"])
+def aggregation_builder_agent(state: AgentState) -> Dict[str, Any]:
+    """Build MongoDB aggregation pipelines with ReAct-style reasoning."""
+    sub_queries = state.get("sub_queries", [])
+    schema = state.get("schema")
+
+    if not sub_queries:
+        return {"current_agent": "supervisor"}
+
+    results = []
+
+    for sub_query in sub_queries:
+        query_text = sub_query.get("query", "")
+        query_id = sub_query.get("id", "unknown")
+
+        # Use existing query generation logic
+        pipeline = generate_mongodb_query(query_text)
+
+        if pipeline:
+            try:
+                # Execute the query
+                result_json = execute_mongodb_query_tool(json.dumps(pipeline))
+                result_data = json.loads(result_json) if result_json.startswith('[') else {"error": result_json}
+
+                results.append({
+                    "sub_query_id": query_id,
+                    "query": query_text,
+                    "pipeline": pipeline,
+                    "result": result_data,
+                    "success": True
+                })
+            except Exception as e:
+                results.append({
+                    "sub_query_id": query_id,
+                    "query": query_text,
+                    "error": str(e),
+                    "success": False
+                })
+        else:
+            results.append({
+                "sub_query_id": query_id,
+                "query": query_text,
+                "error": "Failed to generate pipeline",
+                "success": False
+            })
+
+    log_child_run(
+        name="aggregation_building",
+        inputs={"sub_queries_count": len(sub_queries)},
+        outputs={"results_count": len(results), "successful": sum(1 for r in results if r.get("success"))},
+        tags=["query-building"]
+    )
+
+    return {"results": results, "current_agent": "aggregation_builder"}
+
+
+@traceable_step(name="guardrails", tags=["safety"])
+def guardrails_check(state: AgentState) -> Dict[str, Any]:
+    """Perform safety and validation checks."""
+    question = state["messages"][-1].content if state["messages"] else ""
+    results = state.get("results", [])
+
+    llm = get_llm()
+
+    safety_prompt = f"""
+    Review this procurement query and results for safety and appropriateness:
+
+    Question: {question}
+    Results count: {len(results)}
+
+    Check for:
+    1. Data exposure risks
+    2. Query complexity/safety
+    3. Result size appropriateness
+    4. Compliance with procurement policies
+
+    Return: "safe" or "unsafe" with brief reason.
+    """
+
+    try:
+        response = llm.invoke([SystemMessage(content=safety_prompt)])
+        safety_result = response.content.strip().lower()
+
+        status = "safe" if "safe" in safety_result else "unsafe"
+
+        log_child_run(
+            name="safety_check",
+            inputs={"question": question[:100], "results_count": len(results)},
+            outputs={"status": status},
+            tags=["safety"]
+        )
+
+        return {"guardrails_status": status, "current_agent": "guardrails"}
+
+    except Exception as e:
+        log_child_run(
+            name="safety_check_error",
+            inputs={"question": question[:100]},
+            outputs={"error": str(e), "status": "safe"},  # Default to safe
+            tags=["safety-error"]
+        )
+        return {"guardrails_status": "safe", "current_agent": "guardrails"}
+
+
+@traceable_step(name="merge_results", tags=["post-processing"])
+def merge_results_node(state: AgentState) -> Dict[str, Any]:
+    """Merge and post-process results from multiple sub-queries."""
+    results = state.get("results", [])
+    question = state["messages"][-1].content if state["messages"] else ""
+
+    # Simple merging logic - combine all successful results
+    merged_data = []
+    errors = []
+
+    for result in results:
+        if result.get("success"):
+            result_data = result.get("result", [])
+            if isinstance(result_data, list):
+                merged_data.extend(result_data)
+            else:
+                merged_data.append(result_data)
+        else:
+            errors.append(result.get("error", "Unknown error"))
+
+    # Convert back to legacy format for compatibility
+    mongodb_results = merged_data if merged_data else [{"error": "; ".join(errors)}] if errors else []
+
+    log_child_run(
+        name="result_merging",
+        inputs={"results_count": len(results)},
+        outputs={"merged_count": len(merged_data), "errors": len(errors)},
+        tags=["post-processing"]
+    )
+
+    return {
+        "mongodb_results": mongodb_results,  # For compatibility
+        "current_agent": "merge"
+    }
+
+
+@traceable_step(name="respond", tags=["response"])
+def response_generator(state: AgentState) -> Dict[str, Any]:
+    """Generate the final response to the user."""
+    # Use existing response formatting logic
+    return format_response_node(state)
+
+
+# ===== LEGACY FUNCTIONS (kept for compatibility) =====
 
 @traceable_step(name="execute_mongodb_query", run_type="tool", tags=["mongodb"])
 @tool
@@ -331,33 +742,77 @@ def handle_out_of_scope(state: AgentState) -> Dict[str, Any]:
     }
 
 
-# Create the LangGraph workflow
+# Create the redesigned LangGraph workflow
 def create_procurement_agent():
-    """Create the LangGraph agent for procurement queries."""
+    """Create the redesigned LangGraph agent for procurement queries."""
     workflow = StateGraph(AgentState)
 
-    # Add nodes
+    # Add all nodes
+    workflow.add_node("input_processor", input_processor)
+    workflow.add_node("supervisor", supervisor_agent)
+    workflow.add_node("query_understanding", query_understanding_agent)
+    workflow.add_node("fetch_schema", fetch_schema_tool)
+    workflow.add_node("planner", query_planner_agent)
+    workflow.add_node("aggregation_builder", aggregation_builder_agent)
+    workflow.add_node("guardrails", guardrails_check)
+    workflow.add_node("merge", merge_results_node)
+    workflow.add_node("respond", response_generator)
+
+    # Legacy nodes for compatibility
     workflow.add_node("classify_question", classify_question_node)
     workflow.add_node("check_conversation_history", check_conversation_history_relevance)
     workflow.add_node("analyze_question", analyze_question)
     workflow.add_node("format_response", format_response_node)
     workflow.add_node("handle_out_of_scope", handle_out_of_scope)
 
-    # Define flow
+    # Define the new architecture flow
     workflow.set_entry_point("check_conversation_history")
+
+    # Initial processing
     workflow.add_edge("check_conversation_history", "classify_question")
     workflow.add_conditional_edges(
         "classify_question",
         lambda state: state.get("question_category", QuestionCategory.OUT_OF_SCOPE.value),
         {
-            QuestionCategory.QUERY_GENERATION.value: "analyze_question",
-            QuestionCategory.DATABASE_INFO.value: "analyze_question",
-            QuestionCategory.ACQUISITION_METHODS.value: "analyze_question",
+            QuestionCategory.QUERY_GENERATION.value: "input_processor",
+            QuestionCategory.DATABASE_INFO.value: "input_processor",
+            QuestionCategory.ACQUISITION_METHODS.value: "input_processor",
             QuestionCategory.OUT_OF_SCOPE.value: "handle_out_of_scope",
         },
     )
+
+    # New architecture flow
+    workflow.add_edge("input_processor", "supervisor")
+
+    # Supervisor routes to specialized agents
+    workflow.add_conditional_edges(
+        "supervisor",
+        lambda state: state.get("current_agent", "respond"),
+        {
+            "query_understanding": "query_understanding",
+            "fetch_schema": "fetch_schema",
+            "planner": "planner",
+            "aggregation_builder": "aggregation_builder",
+            "guardrails": "guardrails",
+            "merge": "merge",
+            "respond": "respond",
+        },
+    )
+
+    # All specialized agents route back to supervisor for coordination
+    workflow.add_edge("query_understanding", "supervisor")
+    workflow.add_edge("fetch_schema", "supervisor")
+    workflow.add_edge("planner", "supervisor")
+    workflow.add_edge("aggregation_builder", "supervisor")
+    workflow.add_edge("guardrails", "supervisor")
+    workflow.add_edge("merge", "supervisor")
+
+    # Final response generation
+    workflow.add_edge("respond", END)
+    workflow.add_edge("handle_out_of_scope", END)
+
+    # Legacy flow (fallback)
     workflow.add_edge("analyze_question", "format_response")
     workflow.add_edge("format_response", END)
-    workflow.add_edge("handle_out_of_scope", END)
 
     return workflow.compile()

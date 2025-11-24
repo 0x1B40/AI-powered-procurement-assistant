@@ -1,6 +1,6 @@
 """Main procurement agent interface."""
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
@@ -22,7 +22,7 @@ def get_procurement_agent():
 
 
 @traceable_step(name="procurement_chat", tags=["chat-entrypoint"])
-def chat(question: str, conversation_history: List[BaseMessage] | None = None) -> tuple[str, List[BaseMessage]]:
+def chat(question: str, conversation_history: Optional[List[BaseMessage]] = None) -> tuple[str, List[BaseMessage]]:
     """Generate a MongoDB-grounded answer for a procurement question
 
     Args:
