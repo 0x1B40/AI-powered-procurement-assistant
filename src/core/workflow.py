@@ -35,7 +35,7 @@ def execute_mongodb_query_tool(query: str) -> str:
 
 @traceable_step(name="check_conversation_history_relevance", tags=["conversation-history"])
 def check_conversation_history_relevance(state: AgentState) -> Dict[str, Any]:
-    """Check conversation history and collect relevant context for the current question."""
+    """Check conversation history and collect relevant context using chain of thought reasoning with few-shot examples."""
     messages = state["messages"]
     current_question = messages[-1].content if messages else ""
 
@@ -65,13 +65,41 @@ def check_conversation_history_relevance(state: AgentState) -> Dict[str, Any]:
     context_check_prompt = f"""
     Analyze if the current question likely needs conversation context to be properly understood.
 
+    Use chain of thought reasoning to determine if this question references previous conversation:
+
     Current question: "{current_question}"
 
     Recent conversation (most recent first):
     {chr(10).join([f"Q: {pair['request'][:100]}... A: {pair['response'][:200]}..." for pair in conversation_pairs[-2:]])}
 
+    Chain of thought process:
+    1. Does the question contain pronouns like "it", "that", "this", "those"?
+    2. Does it reference "previous", "last", "above", or similar temporal terms?
+    3. Does it ask about specific entities mentioned in recent conversation?
+    4. Is it a follow-up question like "What about X?" or "How about Y?"?
+
+    Few-shot examples:
+
+    Example 1:
+    Question: "What about the other departments?"
+    Previous: "Show me top 5 departments by spend"
+    Analysis: Contains "other" referring to departments, needs context → true
+
+    Example 2:
+    Question: "How many orders were created in 2014?"
+    Previous: "What fiscal years does the data cover?"
+    Analysis: Standalone question with no references → false
+
+    Example 3:
+    Question: "Can you show me that broken down by month?"
+    Previous: "What's the total spend for 2014?"
+    Analysis: "that" refers to the spend calculation, needs context → true
+
+    Example 4:
+    Question: "What fields are available?"
+    Analysis: Schema question, no conversation references → false
+
     Does this question appear to be a follow-up, clarification, or reference to previous context?
-    Examples of questions that need context: "What about X?", "How about Y?", "And Z?", "The previous one"
 
     Return only "true" or "false".
     """
@@ -79,9 +107,23 @@ def check_conversation_history_relevance(state: AgentState) -> Dict[str, Any]:
     try:
         context_response = llm.invoke([SystemMessage(content=context_check_prompt)])
         needs_context = context_response.content.strip().lower() == "true"
-    except:
+
+        # Log the chain of thought reasoning for context determination
+        log_child_run(
+            name="context_relevance_check",
+            inputs={"question": current_question, "method": "chain_of_thought_with_few_shot"},
+            outputs={"needs_context": needs_context, "llm_reasoning": context_response.content.strip()},
+            tags=["conversation-history", "chain-of-thought"]
+        )
+    except Exception as e:
         # Default to including context if we can't determine
         needs_context = len(conversation_pairs) > 0
+        log_child_run(
+            name="context_relevance_check",
+            inputs={"question": current_question, "error": str(e)},
+            outputs={"needs_context": needs_context, "fallback": True},
+            tags=["conversation-history", "error"]
+        )
 
     if needs_context:
         # Include all recent conversation pairs as context
@@ -95,12 +137,43 @@ def check_conversation_history_relevance(state: AgentState) -> Dict[str, Any]:
     else:
         # For standalone questions, check which parts are actually relevant
         relevance_prompt = f"""
-        Analyze the following conversation history and determine which previous request-response pairs are relevant to the current question.
+        Analyze the conversation history and determine which previous request-response pairs are relevant to the current question.
+
+        Use chain of thought reasoning to identify relevant context:
 
         Current question: "{current_question}"
 
         Conversation history (each pair represents a previous request and its response):
         {chr(10).join([f"Pair {i+1}: Request: '{pair['request']}' Response: '{pair['response'][:200]}...'" for i, pair in enumerate(conversation_pairs)])}
+
+        Chain of thought process:
+        1. Identify the core topic and entities in the current question
+        2. Scan each conversation pair for semantic similarity
+        3. Look for shared entities (departments, suppliers, fiscal years, etc.)
+        4. Consider if previous results could inform or provide context for the current query
+        5. Prioritize recent, highly relevant pairs over older, tangentially related ones
+
+        Few-shot examples:
+
+        Example 1:
+        Current: "Show me spend by department for fiscal year 2014-2015"
+        History includes: Pair 1: "What fiscal years are in the data?" → includes 2014-2015
+        Analysis: Fiscal year context is directly relevant → [0]
+
+        Example 2:
+        Current: "How many orders from Department of Transportation?"
+        History includes: Pair 1: "Top 5 departments by order count" → shows Transportation with 14,871 orders
+        Analysis: Direct department information is highly relevant → [0]
+
+        Example 3:
+        Current: "What suppliers have the most orders?"
+        History includes: Pair 1: "Show me top suppliers by spend" Pair 2: "What departments are there?"
+        Analysis: Supplier spend data is relevant, department list is not → [0]
+
+        Example 4:
+        Current: "Calculate average order value for IT Goods"
+        History includes: Pair 1: "What acquisition types exist?" → mentions IT Goods
+        Analysis: Acquisition type context helps → [0]
 
         Instructions:
         - Return a JSON array of indices (0-based) of the conversation pairs that are relevant to the current question.
@@ -127,6 +200,22 @@ def check_conversation_history_relevance(state: AgentState) -> Dict[str, Any]:
                     relevant_history = []
             else:
                 relevant_history = []
+
+            # Log the chain of thought relevance filtering
+            log_child_run(
+                name="relevance_filtering",
+                inputs={
+                    "question": current_question,
+                    "total_pairs": len(conversation_pairs),
+                    "method": "chain_of_thought_with_few_shot"
+                },
+                outputs={
+                    "relevant_indices": relevant_indices if 'relevant_indices' in locals() and isinstance(relevant_indices, list) else [],
+                    "relevant_pairs_count": len(relevant_history),
+                    "llm_response": cleaned_response[:200] + "..." if len(cleaned_response) > 200 else cleaned_response
+                },
+                tags=["conversation-history", "chain-of-thought", "filtering"]
+            )
 
         except Exception as e:
             log_child_run(
@@ -292,7 +381,7 @@ def format_response_node(state: AgentState) -> Dict[str, Any]:
 
 @traceable_step(name="classify_question", tags=["routing"])
 def classify_question_node(state: AgentState) -> Dict[str, Any]:
-    """Categorize the incoming user question before running expensive steps."""
+    """Categorize the incoming user question before running expensive steps using chain of thought reasoning."""
     messages = state.get("messages", [])
     question = messages[-1].content if messages else ""
     relevant_history = state.get("relevant_conversation_history", [])
@@ -306,13 +395,32 @@ def classify_question_node(state: AgentState) -> Dict[str, Any]:
         ])
         enhanced_question = f"Context from conversation history:\n{history_context}\n\nCurrent question: {question}"
 
+    # Log the enhanced question for debugging
+    log_child_run(
+        name="classification_input",
+        inputs={"original_question": question, "enhanced_question": enhanced_question, "conversation_pairs": len(relevant_history)},
+        tags=["classifier-input"],
+    )
+
     category, confidence = categorize_question(enhanced_question)
+
+    # Log detailed classification reasoning for better traceability
     log_child_run(
         name="question_classifier",
-        inputs={"question": question, "enhanced_question": enhanced_question, "history_pairs": len(relevant_history)},
-        outputs={"category": category.value, "confidence": confidence},
+        inputs={
+            "question": question,
+            "enhanced_question": enhanced_question,
+            "history_pairs": len(relevant_history),
+            "classification_method": "chain_of_thought_with_few_shot"
+        },
+        outputs={
+            "category": category.value,
+            "confidence": confidence,
+            "routing_decision": "analyze_question" if category.value in ["query_generation", "database_info", "acquisition_methods"] else "handle_out_of_scope"
+        },
         tags=["classifier"],
     )
+
     return {
         "question_category": category.value,
         "classification_confidence": confidence,
