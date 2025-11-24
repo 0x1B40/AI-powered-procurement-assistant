@@ -92,5 +92,5 @@ OUT_OF_SCOPE_RESPONSE = (
     "dataset, and explaining acquisition methods. Please ask about those topics."
 )
 
-MAX_QUERY_ATTEMPTS = 3
+MAX_QUERY_ATTEMPTS = 5
 RETRY_SNIPPET_LIMIT = 800
