@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from src.utils.data_loader import snake_case, normalize_chunk, sanitize_currency_series
+from src.shared.data_loader import snake_case, normalize_chunk, sanitize_currency_series
 
 
 class TestDataLoader:
@@ -79,8 +79,8 @@ class TestDataLoader:
         assert pd.isna(cleaned.tolist()[2])
         assert pd.isna(cleaned.tolist()[3])
 
-    @patch('src.data_loader.MongoClient')
-    @patch('src.data_loader.get_settings')
+    @patch('src.shared.data_loader.MongoClient')
+    @patch('src.shared.data_loader.get_settings')
     def test_load_csv_integration(self, mock_get_settings, mock_mongo_client):
         # This is a basic integration test structure
         # In a real scenario, you'd mock the entire MongoDB interaction
@@ -97,7 +97,7 @@ class TestDataLoader:
 
         # Test that the function can be called without errors
         # (Full integration test would require actual CSV file and MongoDB)
-        from src.utils.data_loader import load_csv
+        from src.shared.data_loader import load_csv
         from pathlib import Path
 
         # This would normally load a CSV, but we're just testing the setup

@@ -294,7 +294,7 @@ def main():
     print("\n" + "="*60)
     print("USAGE INSTRUCTIONS")
     print("="*60)
-    print("1. Run your Streamlit UI: streamlit run src/api/ui.py")
+    print("1. Run your Streamlit UI: streamlit run src/interfaces/web_ui.py")
     print("2. Ask your agent the natural language questions above")
     print("3. Compare the agent's MongoDB results with the pandas results here")
     print("4. Debug any discrepancies in your agent's query generation")

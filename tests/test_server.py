@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from src.api.server import app
+from src.interfaces.api_server import app
 
 
 class TestServer:
@@ -13,7 +13,7 @@ class TestServer:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
-    @patch('src.api.server.agent.chat')
+    @patch('src.interfaces.api_server.agent.chat')
     def test_chat_endpoint_success(self, mock_chat):
         mock_chat.return_value = ("Query result: [{\"count\": 150}]", [])
 
@@ -31,13 +31,13 @@ class TestServer:
         assert response.status_code == 422  # Validation error
 
         # Test with minimal valid question (should hit agent layer)
-        with patch('src.api.server.agent.chat', return_value=("OK", [])):
+        with patch('src.interfaces.api_server.agent.chat', return_value=("OK", [])):
             payload = {"question": "Hi"}
             response = self.client.post("/chat", json=payload)
             assert response.status_code == 200
             assert response.json() == {"answer": "OK"}
 
-    @patch('src.api.server.agent.chat')
+    @patch('src.interfaces.api_server.agent.chat')
     def test_chat_endpoint_agent_error(self, mock_chat):
         mock_chat.side_effect = Exception("Agent processing failed")
 

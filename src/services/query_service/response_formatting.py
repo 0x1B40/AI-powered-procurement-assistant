@@ -5,8 +5,8 @@ from typing import Dict, Any, List
 
 from langchain_core.messages import SystemMessage
 
-from ..config_and_constants.constants import REFERENCE_CATEGORIES, QuestionCategory
-from ..llm_and_classification.llm import get_llm
+from ...config.constants import REFERENCE_CATEGORIES, QuestionCategory
+from ..llm_service.llm import get_llm
 
 
 def format_response(question: str, reference_context: List[Dict[str, Any]],

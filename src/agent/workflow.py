@@ -7,15 +7,15 @@ from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 
-from ..llm_and_classification.classification import categorize_question, detect_compound_queries
-from ..llm_and_classification.llm import get_llm
-from ..config_and_constants.constants import REFERENCE_CATEGORIES, QuestionCategory, OUT_OF_SCOPE_RESPONSE
-from ..database.database import execute_mongodb_query
-from ..query_and_response.query_generation import generate_mongodb_query
-from ..query_and_response.response_formatting import format_response
-from ..utils.telemetry import traceable_step, log_child_run
+from ..services.llm_service.classification import categorize_question, detect_compound_queries
+from ..services.llm_service.llm import get_llm
+from ..config.constants import REFERENCE_CATEGORIES, QuestionCategory, OUT_OF_SCOPE_RESPONSE
+from ..data.mongodb import execute_mongodb_query
+from ..services.query_service.query_generation import generate_mongodb_query
+from ..services.query_service.response_formatting import format_response
+from ..shared.telemetry import traceable_step, log_child_run
 from .types import AgentState
-from ..utils.vector_store import retrieve_reference_chunks
+from ..data.vector_store import retrieve_reference_chunks
 
 
 @traceable_step(name="execute_mongodb_query", run_type="tool", tags=["mongodb"])

@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, constr
 from typing import List
 
-from ..core import agent
+from ..agent import agent
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 QuestionStr = constr(min_length=2, strip_whitespace=True)

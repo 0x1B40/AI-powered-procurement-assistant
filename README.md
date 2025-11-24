@@ -72,7 +72,7 @@ This repository contains a prototype AI agent that converts natural-language pro
    uvicorn src.api.server:app --reload
 
    # Frontend (in another terminal)
-   streamlit run src/api/ui.py
+   streamlit run src/interfaces/web_ui.py
    ```
 
 6. **Run tests**
@@ -108,40 +108,46 @@ activate.bat ui
 The application follows a modular, layered architecture with clear separation of concerns:
 
 #### Core Components
-- **Agent System** (`src/core/`): LangChain + LangGraph orchestration that converts natural language to MongoDB queries
-- **LLM Integration** (`src/llm/`): OpenAI API integration with question classification
-- **Database Layer** (`src/database/`): MongoDB connection and query execution
-- **Query Processing** (`src/query/`): Query generation, validation, and response formatting
+- **Agent System** (`src/agent/`): LangChain + LangGraph orchestration that converts natural language to MongoDB queries
+- **Services** (`src/services/`): LLM integration, query processing, and response formatting
+- **Data Layer** (`src/data/`): MongoDB connection and vector storage
 - **Configuration** (`src/config/`): Settings management and constants
-- **API & UI** (`src/api/`): FastAPI backend and Streamlit interface
-- **Utilities** (`src/utils/`): Data loading, telemetry, and vector storage
+- **Interfaces** (`src/interfaces/`): FastAPI backend and Streamlit interface
+- **Shared Utilities** (`src/shared/`): Data loading and telemetry
 
 #### File Structure
 
 ```
 src/
 ├── __init__.py              # Main package interface exposing chat()
-├── core/                    # Core agent functionality
+├── agent/                   # Core agent functionality
 │   ├── __init__.py
 │   ├── agent.py            # Main chat interface (65 lines)
 │   ├── types.py            # Type definitions (AgentState, etc.)
 │   └── workflow.py         # LangGraph workflow orchestration
-├── llm/                     # LLM and AI functionality
+├── services/                # Backend services
 │   ├── __init__.py
-│   ├── classification.py   # Question categorization (routing logic)
-│   └── llm.py              # LLM initialization & utilities
-├── database/                # Database operations
+│   ├── llm_service/         # LLM and AI functionality
+│   │   ├── __init__.py
+│   │   ├── classification.py # Question categorization (routing logic)
+│   │   └── llm.py           # LLM initialization & utilities
+│   └── query_service/       # Query generation & processing
+│       ├── __init__.py
+│       ├── query_generation.py # Query creation, validation & retry logic
+│       └── response_formatting.py # Natural language response formatting
+├── data/                    # Data layer operations
 │   ├── __init__.py
-│   └── database.py         # MongoDB connection & query execution
-├── query/                   # Query generation & processing
-│   ├── __init__.py
-│   ├── query_generation.py # Query creation, validation & retry logic
-│   └── response_formatting.py # Natural language response formatting
+│   ├── mongodb.py           # MongoDB connection & query execution
+│   └── vector_store.py      # Vector storage for reference documents
 ├── config/                  # Configuration & constants
 │   ├── __init__.py
 │   ├── config.py           # Settings management (env vars, etc.)
 │   └── constants.py        # Prompts, enums, schema definitions
-├── utils/                   # Utility functions
+├── interfaces/              # User interfaces
+│   ├── __init__.py
+│   ├── api_server.py      # FastAPI backend server
+│   └── web_ui.py           # Streamlit web interface
+└── shared/                  # Shared utilities
 │   ├── __init__.py
 │   ├── data_loader.py      # CSV → MongoDB ingestion
 │   ├── telemetry.py        # Logging & tracing (LangSmith integration)
@@ -162,10 +168,10 @@ src/
 
 #### Data Flow
 
-1. **User Input** → `src/api/server.py` (FastAPI endpoint)
-2. **Question Classification** → `src/llm/classification.py` (routes to appropriate handler)
-3. **Query Generation** → `src/query/query_generation.py` (LLM creates MongoDB pipeline)
-4. **Database Execution** → `src/database/database.py` (executes aggregation pipeline)
+1. **User Input** → `src/interfaces/api_server.py` (FastAPI endpoint)
+2. **Question Classification** → `src/services/llm_service/classification.py` (routes to appropriate handler)
+3. **Query Generation** → `src/services/query_service/query_generation.py` (LLM creates MongoDB pipeline)
+4. **Database Execution** → `src/data/mongodb.py` (executes aggregation pipeline)
 5. **Response Formatting** → `src/query/response_formatting.py` (converts results to natural language)
 6. **Final Response** → User via API/UI
 
