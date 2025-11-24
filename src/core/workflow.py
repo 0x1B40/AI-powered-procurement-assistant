@@ -9,9 +9,11 @@ from langgraph.graph import StateGraph, END
 
 from ..llm_and_classification.classification import categorize_question, detect_compound_queries
 from ..llm_and_classification.llm import get_llm
+from ..config_and_constants.config import get_settings
 from ..config_and_constants.constants import REFERENCE_CATEGORIES, QuestionCategory, OUT_OF_SCOPE_RESPONSE
 from ..database.database import execute_mongodb_query
 from ..query_and_response.query_generation import generate_mongodb_query
+from ..query_and_response.dspy_query_generation import generate_mongodb_query_dspy
 from ..query_and_response.response_formatting import format_response
 from ..utils.telemetry import traceable_step, log_child_run
 from .types import AgentState
@@ -212,7 +214,11 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
             )
 
             # Generate and execute each sub-query (use fewer retries for speed)
-            pipeline = generate_mongodb_query(sub_query, max_attempts=2)  # Reduce retries for compound queries
+            settings = get_settings()
+            if settings.use_dspy_for_queries:
+                pipeline = generate_mongodb_query_dspy(sub_query)
+            else:
+                pipeline = generate_mongodb_query(sub_query, max_attempts=2)  # Reduce retries for compound queries
 
             if pipeline:
                 try:
@@ -260,8 +266,13 @@ def analyze_question(state: AgentState) -> Dict[str, Any]:
             "final_answer": "",  # Will be formatted later
         }
 
-    # Single query - use existing logic
-    pipeline = generate_mongodb_query(enhanced_question)
+    # Single query - use DSPy if enabled, otherwise use existing logic
+    settings = get_settings()
+
+    if settings.use_dspy_for_queries:
+        pipeline = generate_mongodb_query_dspy(enhanced_question)
+    else:
+        pipeline = generate_mongodb_query(enhanced_question)
 
     if pipeline is None:
         final_error = "Failed to generate a valid MongoDB pipeline."

@@ -16,7 +16,7 @@ _ENV_FILE = _ENV_FILE_PATH if (_ENV_FILE_PATH.exists() and os.access(_ENV_FILE_P
 
 
 class Settings(BaseSettings):
-    mongodb_uri: str = Field(env="MONGODB_URI")
+    mongodb_uri: str = Field(default="mongodb://localhost:27017/test", env="MONGODB_URI")
     mongodb_db: str = Field(env="MONGODB_DB", default="california_procurement")
     mongodb_collection: str = Field(env="MONGODB_COLLECTION", default="purchase_orders")
     reference_docs_dir: Path = Field(default=Path("data"), env="REFERENCE_DOCS_DIR")
@@ -29,10 +29,19 @@ class Settings(BaseSettings):
     reference_chunk_size: int = Field(default=1000, env="REFERENCE_CHUNK_SIZE")
     reference_chunk_overlap: int = Field(default=150, env="REFERENCE_CHUNK_OVERLAP")
 
-    primary_llm_api_key: Optional[str] = Field(default=None, env="PRIMARY_LLM_API_KEY")
+    # LLM Configuration (for both LangChain and DSPy)
+    llm_provider: str = Field(default="grok", env="LLM_PROVIDER")  # openai, grok, anthropic, etc.
+    primary_llm_api_key: Optional[str] = Field(default="dummy-key-for-testing", env="PRIMARY_LLM_API_KEY")
     primary_llm_model: str = Field(default="grok-4-1-fast-non-reasoning", env="PRIMARY_LLM_MODEL")
     primary_llm_temperature: float = Field(default=0.1, env="PRIMARY_LLM_TEMPERATURE")
     primary_llm_base_url: Optional[str] = Field(default=None, env="PRIMARY_LLM_BASE_URL")
+
+    # DSPy-specific configuration
+    dspy_model_cache_dir: Optional[Path] = Field(default=None, env="DSPY_MODEL_CACHE_DIR")
+    dspy_compile_on_startup: bool = Field(default=False, env="DSPY_COMPILE_ON_STARTUP")
+    dspy_training_data_path: Path = Field(default=Path("data/training_data.json"), env="DSPY_TRAINING_DATA_PATH")
+    dspy_optimized_model_path: Path = Field(default=Path("models/dspy_optimized"), env="DSPY_OPTIMIZED_MODEL_PATH")
+    use_dspy_for_queries: bool = Field(default=False, env="USE_DSPY_FOR_QUERIES")
 
     langsmith_api_key: Optional[str] = Field(
         default=None,

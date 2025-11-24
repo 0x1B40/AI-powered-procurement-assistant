@@ -4,7 +4,7 @@ import logging
 import shutil
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Optional, Union
 
 from docx import Document as DocxDocument
 from langchain.docstore.document import Document
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 
 
-def _normalize_dir(path: Path | str | None) -> Path:
+def _normalize_dir(path: Optional[Union[Path, str]]) -> Path:
     if path is None:
         return Path()
     return Path(path).expanduser().resolve()
@@ -86,7 +86,7 @@ def _load_docx(path: Path) -> List[Document]:
     return docs
 
 
-def _collect_documents(source_dir: Path, extensions: Iterable[str] | None = None) -> List[Document]:
+def _collect_documents(source_dir: Path, extensions: Optional[Iterable[str]] = None) -> List[Document]:
     if extensions is None:
         extensions = SUPPORTED_EXTENSIONS
     allowed = {ext.lower() for ext in extensions}
@@ -121,9 +121,9 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 
 
 def build_reference_vector_store(
-    docs_dir: Path | str | None = None,
-    persist_dir: Path | str | None = None,
-    collection_name: str | None = None,
+    docs_dir: Optional[Union[Path, str]] = None,
+    persist_dir: Optional[Union[Path, str]] = None,
+    collection_name: Optional[str] = None,
     force_rebuild: bool = False,
 ) -> Path:
     settings = get_settings()
@@ -175,7 +175,7 @@ def build_reference_vector_store(
 
 
 @lru_cache
-def _get_vector_store() -> Chroma | None:
+def _get_vector_store() -> Optional[Chroma]:
     settings = get_settings()
     persist_dir = settings.vector_store_dir
     if not _vector_store_exists(persist_dir):
