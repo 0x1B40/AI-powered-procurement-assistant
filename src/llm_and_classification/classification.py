@@ -49,6 +49,12 @@ def _strip_code_fences(text: str) -> str:
 
 
 def categorize_question(text: str, llm: Optional[Any] = None) -> Tuple[QuestionCategory, Optional[float]]:
+    """
+    Categorize questions using chain of thought reasoning with few-shot examples.
+
+    This function uses structured reasoning to classify procurement questions into
+    appropriate categories for routing to the correct processing pipeline.
+    """
     normalized = (text or "").strip()
     if not normalized:
         return QuestionCategory.OUT_OF_SCOPE, None
@@ -57,6 +63,7 @@ def categorize_question(text: str, llm: Optional[Any] = None) -> Tuple[QuestionC
     llm = llm or get_llm()
 
     try:
+        # Use chain of thought reasoning with few-shot examples
         response = llm.invoke([SystemMessage(content=prompt)])
     except Exception:
         return QuestionCategory.OUT_OF_SCOPE, None
