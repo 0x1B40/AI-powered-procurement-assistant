@@ -14,7 +14,7 @@ This repository contains an AI-powered procurement assistant that converts natur
 
 2. **Start all services with Docker Compose**
    ```bash
-   docker-compose up
+   docker-compose up --build
    ```
    This will start MongoDB, the FastAPI backend, and Streamlit UI. it might take a while the first time it is setup, especially during requirements.txt setup. 
 
