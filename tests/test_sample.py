@@ -5,7 +5,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Load sample
-data_path = 'archive/PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv'
+data_path = 'data/data.csv'
 total_rows = 919734
 sample_size = 50000
 skip_rows = sorted(np.random.choice(range(1, total_rows), total_rows - sample_size - 1, replace=False))
