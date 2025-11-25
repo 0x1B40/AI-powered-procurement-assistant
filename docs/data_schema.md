@@ -67,6 +67,6 @@ This document summarizes the structure of the California Department of General S
 - When generating MongoDB pipelines, use `$match` on `acquisition_type`, `department_name`, `segment_title`, etc., plus `$group`/`$sort` for aggregations.
 - Implement fuzzy matching for `department_name` and `supplier_name` as values may contain punctuation or inconsistent casing.
 
-This schema should be used in conjunction with the refreshed EDA notebook (`notebooks/eda.ipynb`) and the MongoDB validation script (`scripts/validate_mongodb_schema.py`) to keep the ingestion pipeline reliable.
+This schema should be used in conjunction with the refreshed EDA notebook (`notebooks/eda.ipynb`) and the MongoDB validation script (`data_scripts/validate_mongodb_schema.py`) to keep the ingestion pipeline reliable.
 
 

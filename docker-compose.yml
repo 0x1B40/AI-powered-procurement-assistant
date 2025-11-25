@@ -21,7 +21,7 @@ services:
       retries: 5
 
   app:
-    build: .
+    image: python:3.11-slim
     container_name: procurement_app
     restart: unless-stopped
     environment:
@@ -29,7 +29,7 @@ services:
       MONGODB_DB: california_procurement
       MONGODB_COLLECTION: purchase_orders
       PRIMARY_LLM_API_KEY: ${PRIMARY_LLM_API_KEY:-}
-      PRIMARY_LLM_MODEL: ${PRIMARY_LLM_MODEL:-grok-4-1-fast-non-reasoning}
+      PRIMARY_LLM_MODEL: ${PRIMARY_LLM_MODEL:-grok-4-1-fast-reasoning}
       PRIMARY_LLM_TEMPERATURE: ${PRIMARY_LLM_TEMPERATURE:-0.1}
       PRIMARY_LLM_BASE_URL: ${PRIMARY_LLM_BASE_URL:-https://api.x.ai/v1}
       # LangSmith configuration
@@ -37,6 +37,10 @@ services:
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-procurement-agent-debug}
       LANGCHAIN_ENDPOINT: ${LANGCHAIN_ENDPOINT:-https://api.smith.langchain.com}
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      PIP_NO_CACHE_DIR: 1
+      PIP_DISABLE_PIP_VERSION_CHECK: 1
     ports:
       - "8000:8000"
     depends_on:
@@ -45,15 +49,22 @@ services:
     networks:
       - procurement_network
     volumes:
+      - ./src:/app/src:ro
+      - ./data_scripts:/app/scripts:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+      - ./docker_scripts/start-app.sh:/app/start-app.sh:ro
       - ./data:/app/data
+    # user: "1000:1000"  # Temporarily commented out to debug permissions
+    command: ["bash", "/app/start-app.sh"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
   streamlit:
-    build: .
+    image: python:3.11-slim
     container_name: procurement_streamlit
     restart: unless-stopped
     environment:
@@ -64,7 +75,12 @@ services:
       - app
     networks:
       - procurement_network
-    command: ["streamlit", "run", "src/interfaces/web_ui.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    volumes:
+      - ./src:/app/src:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+      - ./docker_scripts/start-streamlit.sh:/app/start-streamlit.sh:ro
+    # user: "1000:1000"  # Temporarily commented out to debug permissions
+    command: ["bash", "/app/start-streamlit.sh"]
 
 volumes:
   mongodb_data:
