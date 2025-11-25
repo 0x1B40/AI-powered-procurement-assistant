@@ -1,36 +1,43 @@
-## Procurement Assistant Prototype
+## Procurement Assistant
 
-This repository contains a prototype AI agent that converts natural-language procurement questions into MongoDB queries over the California Department of General Services purchase order dataset.
+This repository contains an AI-powered procurement assistant that converts natural-language questions into MongoDB queries over the California Department of General Services purchase order dataset. The system uses a LangGraph workflow to orchestrate question classification, query generation, and response formatting.
 
 ### Quickstart
 
-#### Option 1: Docker (Recommended)
+
+#### Docker setup
 
 1. **Set environment variables**
-   Copy `.env.example` to `.env` and fill in the following values:
-   - `OPENAI_API_KEY` → your OpenAI API key.
+   Copy `example.env` to `.env` and fill in the following values:
+   - `PRIMARY_LLM_API_KEY` → your LLM API key (defaults to Grok/xAI).
+   - Also fill the Langsmith API Key if you want to use langsmith for observability and debugging. (note: you will need to have an account )
 
 2. **Start all services with Docker Compose**
    ```bash
    docker-compose up
    ```
-   This will start MongoDB, the FastAPI backend, and Streamlit UI.
+   This will start MongoDB, the FastAPI backend, and Streamlit UI. it might take a while the first time it is setup, especially during requirements.txt setup. 
+
+
+### Data Setup
+
+   For Docker usage, place your data files in the `data/` directory:
+   - `data/PURCHASE ORDER DATA EXTRACT.csv` (156MB dataset)
+   - Other document files should be there as well. the .Docx and the .pdf that came from archive which will be used to do RAG, in case the user asks questions related to that content. 
 
 3. **Load the dataset**
    ```bash
-   docker-compose exec app python -m src.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
+   docker-compose exec app python -m src.shared.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
    ```
 
 4. **Build the reference vector store**
    ```bash
-   docker-compose exec app python -m scripts.build_reference_store --docs-dir data/
+   docker-compose exec app python -m data_scripts.build_reference_store --docs-dir data/
    ```
    This indexes any PDF/DOCX guidance stored under `data/` (e.g., the acquisition method memo or data dictionary) into Chroma so the agent can cite them later.
 
 5. **Access the application**
    - **Streamlit UI**: http://localhost:8501
-   - **FastAPI backend**: http://localhost:8000
-   - **API docs**: http://localhost:8000/docs
 
 
 ### Architecture
@@ -38,12 +45,12 @@ This repository contains a prototype AI agent that converts natural-language pro
 The application follows a modular, layered architecture with clear separation of concerns:
 
 #### Core Components
-- **Agent System** (`src/agent/`): LangChain + LangGraph orchestration that converts natural language to MongoDB queries
-- **Services** (`src/services/`): LLM integration, query processing, and response formatting
-- **Data Layer** (`src/data/`): MongoDB connection and vector storage
-- **Configuration** (`src/config/`): Settings management and constants
-- **Interfaces** (`src/interfaces/`): FastAPI backend and Streamlit interface
-- **Shared Utilities** (`src/shared/`): Data loading and telemetry
+- **Agent System** (`src/agent/`): LangGraph workflow orchestration that converts natural language to MongoDB queries with conversation history support
+- **Services** (`src/services/`): LLM integration, question classification, query generation, and response formatting
+- **Data Layer** (`src/data/`): MongoDB connection and Chroma vector storage for reference documents
+- **Configuration** (`src/config/`): Settings management, constants, and LLM configurations
+- **Interfaces** (`src/interfaces/`): FastAPI backend and Streamlit web interface
+- **Shared Utilities** (`src/shared/`): Data loading, telemetry, and observability
 
 #### File Structure
 
@@ -52,7 +59,7 @@ src/
 ├── __init__.py              # Main package interface exposing chat()
 ├── agent/                   # Core agent functionality
 │   ├── __init__.py
-│   ├── agent.py            # Main chat interface (65 lines)
+│   ├── agent.py            # Main chat interface with conversation history
 │   ├── types.py            # Type definitions (AgentState, etc.)
 │   └── workflow.py         # LangGraph workflow orchestration
 ├── services/                # Backend services
@@ -68,7 +75,7 @@ src/
 ├── data/                    # Data layer operations
 │   ├── __init__.py
 │   ├── mongodb.py           # MongoDB connection & query execution
-│   └── vector_store.py      # Vector storage for reference documents
+│   └── vector_store.py      # Chroma vector storage for reference documents
 ├── config/                  # Configuration & constants
 │   ├── __init__.py
 │   ├── config.py           # Settings management (env vars, etc.)
@@ -78,32 +85,27 @@ src/
 │   ├── api_server.py      # FastAPI backend server
 │   └── web_ui.py           # Streamlit web interface
 └── shared/                  # Shared utilities
-│   ├── __init__.py
-│   ├── data_loader.py      # CSV → MongoDB ingestion
-│   ├── telemetry.py        # Logging & tracing (LangSmith integration)
-│   └── vector_store.py     # Chroma vector DB for reference docs
-└── api/                     # API & UI components
     ├── __init__.py
-    ├── server.py           # FastAPI backend (/chat, /health endpoints)
-    └── ui.py               # Streamlit chat interface
+    ├── data_loader.py      # CSV → MongoDB ingestion
+    └── telemetry.py        # Logging & tracing (LangSmith integration)
 ```
 
 #### Key Design Patterns
 
 - **Modular Architecture**: Each folder contains focused, single-responsibility modules
-- **Dependency Injection**: Clean separation between LLM, database, and business logic
 - **Error Handling**: Comprehensive validation and retry mechanisms for query generation
 - **Observability**: Built-in telemetry with LangSmith tracing for debugging
 - **Testability**: Modular design enables isolated unit testing
 
 #### Data Flow
 
-1. **User Input** → `src/interfaces/api_server.py` (FastAPI endpoint)
-2. **Question Classification** → `src/services/llm_service/classification.py` (routes to appropriate handler)
-3. **Query Generation** → `src/services/query_service/query_generation.py` (LLM creates MongoDB pipeline)
-4. **Database Execution** → `src/data/mongodb.py` (executes aggregation pipeline)
-5. **Response Formatting** → `src/query/response_formatting.py` (converts results to natural language)
-6. **Final Response** → User via API/UI
+1. **User Input** → `src/interfaces/api_server.py` (FastAPI endpoint) or `src/interfaces/web_ui.py` (Streamlit UI)
+2. **Agent Orchestration** → `src/agent/agent.py` (manages conversation history and calls LangGraph workflow)
+3. **Question Classification** → `src/services/llm_service/classification.py` (routes to query generation, reference lookup, or out-of-scope)
+4. **Query Generation** → `src/services/query_service/query_generation.py` (LLM creates MongoDB aggregation pipeline)
+5. **Database Execution** → `src/data/mongodb.py` (executes aggregation pipeline against MongoDB)
+6. **Response Formatting** → `src/services/query_service/response_formatting.py` (converts results to natural language)
+7. **Final Response** → User via API/UI with updated conversation history
 
 ### Docker Services
 
@@ -130,14 +132,8 @@ docker-compose down
 docker-compose down -v
 
 # Load data into running container
-docker-compose exec app python -m src.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
+docker-compose exec app python -m src.shared.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
 ```
-
-### Data Setup
-
-For Docker usage, place your data files in the `data/` directory:
-- `data/PURCHASE ORDER DATA EXTRACT.csv` (156MB dataset)
-- Other documentation files can remain in the root or data directory
 
 ### Data Documentation & Validation
 
@@ -148,24 +144,16 @@ For Docker usage, place your data files in the `data/` directory:
 
 - `data_scripts/build_reference_store.py` walks all PDF/DOCX files inside `REFERENCE_DOCS_DIR` (defaults to `data/`) and chunks them into a persistent Chroma DB located at `VECTOR_STORE_DIR`.
 - Runtime questions classified as `database_info` or `acquisition_methods` are answered directly from the retrieved passages instead of running MongoDB queries.
-- Customize ingestion via environment variables or pass `--docs-dir` / `--persist-dir` flags when running the script (e.g., `python -m scripts.build_reference_store --docs-dir .` if your guidance lives in the repo root).
+- Customize ingestion via environment variables or pass `--docs-dir` / `--persist-dir` flags when running the script (e.g., `python -m data_scripts.build_reference_store --docs-dir .` if your guidance lives in the repo root).
 - Re-run the script whenever you add or edit documentation so embeddings stay in sync.
 
-### Testing Queries
-
-Sample prompts you can use once the system is running:
-
-- "How many purchase orders were created in Q3 2014?"
-- "Which quarter saw the highest total spend?"
-- "List the top 5 most frequently ordered line items."
-- "What's the average order amount for technology-related purchases in 2013?"
 
 ### LangSmith debugging (optional)
 
-LangSmith tracing is wired into the MongoDB agent so you can inspect every prompt, retry, and aggregation pipeline that gets executed.
+LangSmith tracing is wired into the agent workflow so you can inspect every prompt, retry, and aggregation pipeline that gets executed.
 
 1. [Create a LangSmith account](https://smith.langchain.com/) and an API key.
-2. Copy `.env.example` to `.env` (if you have not already) and set:
+2. Copy `example.env` to `.env` (if you have not already) and set:
    - `LANGCHAIN_TRACING_V2=true`
    - `LANGCHAIN_API_KEY=<your key>`
    - `LANGCHAIN_PROJECT=procurement-agent-debug` (or any project name you prefer)
@@ -179,13 +167,4 @@ Each `/chat` request now shows up in LangSmith with nested runs for:
 
 Use these traces to debug malformed aggregation pipelines, replay prompts, and compare different prompt/model settings safely.
 
-### Deliverables Checklist
-
-- [x] Data loader and MongoDB schema definition.
-- [x] AI agent that translates chat → MongoDB queries (LangChain + LangGraph implementation).
-- [x] Conversational interface (API + Streamlit).
-- [x] Docker containerization with docker-compose.
-- [x] Unit tests for key components.
-- [x] Exploratory data analysis notebook.
-- [ ] Video walkthrough (record after functionality is verified).
 
