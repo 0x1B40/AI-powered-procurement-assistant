@@ -12,7 +12,7 @@ This repository contains a prototype AI agent that converts natural-language pro
 
 2. **Start all services with Docker Compose**
    ```bash
-   docker-compose up --build
+   docker-compose up
    ```
    This will start MongoDB, the FastAPI backend, and Streamlit UI.
 
@@ -32,76 +32,6 @@ This repository contains a prototype AI agent that converts natural-language pro
    - **FastAPI backend**: http://localhost:8000
    - **API docs**: http://localhost:8000/docs
 
-#### Option 2: Local Development (Virtual Environment)
-
-1. **Create and activate virtual environment**
-   ```bash
-   python -m venv .venv
-   # Windows:
-   .venv\Scripts\activate
-   # Unix/Mac:
-   source .venv/bin/activate
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set environment variables**
-   Copy `.env.example` to `.env` and fill in the following values:
-   - `MONGODB_URI` → connection string to your MongoDB instance (e.g., `mongodb://localhost:27017`).
-   - `MONGODB_DB` → database name to load the purchases collection into.
-   - `OPENAI_API_KEY` (or another provider key if you swap LLMs).
-
-4. **Run the application (Easy way)**
-   ```bash
-   python run_local.py
-   ```
-   This will start the FastAPI server with auto-reload.
-
-5. **Or run manually**
-   ```bash
-   # Load data (optional - requires MongoDB running)
-   python -m src.data_loader --csv "PURCHASE ORDER DATA EXTRACT.csv"
-
-   # Build/refresh the reference vector store (scans data/ by default)
-   python -m scripts.build_reference_store --docs-dir data/
-
-   # Backend (in one terminal)
-   uvicorn src.api.server:app --reload
-
-   # Frontend (in another terminal)
-   streamlit run src/interfaces/web_ui.py
-   ```
-
-6. **Run tests**
-   ```bash
-   python -m pytest tests/ -v
-   # Or on Windows:
-   activate.bat test
-   ```
-
-### Windows Convenience Scripts
-
-For Windows users, you can use the `activate.bat` script:
-
-```cmd
-# Activate virtual environment
-activate.bat
-
-# Run tests
-activate.bat test
-
-# Start server
-activate.bat run
-
-# Start FastAPI server only
-activate.bat server
-
-# Start Streamlit UI only
-activate.bat ui
-```
 
 ### Architecture
 
@@ -185,10 +115,10 @@ src/
 
 ```bash
 # Start all services
-docker-compose up --build
+docker-compose up
 
 # Start in background
-docker-compose up -d --build
+docker-compose up -d
 
 # View logs
 docker-compose logs -f
@@ -212,11 +142,11 @@ For Docker usage, place your data files in the `data/` directory:
 ### Data Documentation & Validation
 
 - `docs/data_schema.md` — canonical schema reference covering every column, data type, and known data-quality caveats.
-- `python scripts/validate_mongodb_schema.py --expected-count 919734 --sample-size 500` — quick health check to confirm MongoDB ingestion completeness and field coverage.
+- `python data_scripts/validate_mongodb_schema.py --expected-count 919734 --sample-size 500` — quick health check to confirm MongoDB ingestion completeness and field coverage.
 
 ### Reference Document Retrieval
 
-- `scripts/build_reference_store.py` walks all PDF/DOCX files inside `REFERENCE_DOCS_DIR` (defaults to `data/`) and chunks them into a persistent Chroma DB located at `VECTOR_STORE_DIR`.
+- `data_scripts/build_reference_store.py` walks all PDF/DOCX files inside `REFERENCE_DOCS_DIR` (defaults to `data/`) and chunks them into a persistent Chroma DB located at `VECTOR_STORE_DIR`.
 - Runtime questions classified as `database_info` or `acquisition_methods` are answered directly from the retrieved passages instead of running MongoDB queries.
 - Customize ingestion via environment variables or pass `--docs-dir` / `--persist-dir` flags when running the script (e.g., `python -m scripts.build_reference_store --docs-dir .` if your guidance lives in the repo root).
 - Re-run the script whenever you add or edit documentation so embeddings stay in sync.
@@ -239,7 +169,7 @@ LangSmith tracing is wired into the MongoDB agent so you can inspect every promp
    - `LANGCHAIN_TRACING_V2=true`
    - `LANGCHAIN_API_KEY=<your key>`
    - `LANGCHAIN_PROJECT=procurement-agent-debug` (or any project name you prefer)
-3. Start the app as usual (`docker-compose up` or `python run_local.py`).
+3. Start the app as usual with `docker-compose up`.
 
 Each `/chat` request now shows up in LangSmith with nested runs for:
 - `procurement_chat` (top-level FastAPI request)
