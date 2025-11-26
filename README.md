@@ -5,7 +5,7 @@ This repository contains an AI-powered procurement assistant that converts natur
 ### Quickstart
 
 
-#### Docker setup
+#### Docker setup 
 
 1. **Set environment variables**
    Create a `.env` file in the root directory and fill in the following values:
@@ -18,6 +18,8 @@ This repository contains an AI-powered procurement assistant that converts natur
    ```
    This will start MongoDB, the FastAPI backend, and Streamlit UI. it might take a while the first time it is setup, especially during requirements.txt setup. 
 
+**note**:
+project may require approximately ~ 40-50gb worth of hard disk space if deployed through windows, it's excessive but can be improved.
 
 ### Data Setup
 
