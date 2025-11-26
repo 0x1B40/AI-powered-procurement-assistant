@@ -8,13 +8,13 @@ This repository contains an AI-powered procurement assistant that converts natur
 #### Docker setup
 
 1. **Set environment variables**
-   Copy `example.env` to `.env` and fill in the following values:
+   Create a `.env` file in the root directory and fill in the following values:
    - `PRIMARY_LLM_API_KEY` → your LLM API key (defaults to Grok/xAI).
    - Also fill the Langsmith API Key if you want to use langsmith for observability and debugging. (note: you will need to have an account )
 
 2. **Start all services with Docker Compose**
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
    This will start MongoDB, the FastAPI backend, and Streamlit UI. it might take a while the first time it is setup, especially during requirements.txt setup. 
 
@@ -22,17 +22,18 @@ This repository contains an AI-powered procurement assistant that converts natur
 ### Data Setup
 
    For Docker usage, place your data files in the `data/` directory:
-   - `data/PURCHASE ORDER DATA EXTRACT.csv` (156MB dataset)
-   - Other document files should be there as well. the .Docx and the .pdf that came from archive which will be used to do RAG, in case the user asks questions related to that content. 
+   - `data/PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv` (procurement dataset)
+   - Other document files should be there as well (the .docx and .pdf files from the archive) which will be used for RAG when users ask questions related to that content.
 
 3. **Load the dataset**
    ```bash
-   docker-compose exec app python -m src.shared.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
+   docker compose exec app sh -c "cd /app && PYTHONPATH=/app python -m src.shared.data_loader --csv 'data/PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv'"
    ```
+   **Note**: The `PYTHONPATH=/app` is required for Python to find the src modules within the container.
 
 4. **Build the reference vector store**
    ```bash
-   docker-compose exec app python -m data_scripts.build_reference_store --docs-dir data/
+   docker compose exec app python -m data_scripts.build_reference_store --docs-dir data/
    ```
    This indexes any PDF/DOCX guidance stored under `data/` (e.g., the acquisition method memo or data dictionary) into Chroma so the agent can cite them later.
 
@@ -117,22 +118,22 @@ src/
 
 ```bash
 # Start all services
-docker-compose up
+docker compose up
 
 # Start in background
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Remove volumes (will delete data)
-docker-compose down -v
+docker compose down -v
 
 # Load data into running container
-docker-compose exec app python -m src.shared.data_loader --csv "data/PURCHASE ORDER DATA EXTRACT.csv"
+docker compose exec app sh -c "cd /app && PYTHONPATH=/app python -m src.shared.data_loader --csv 'data/PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv'"
 ```
 
 ### Data Documentation & Validation
@@ -157,7 +158,7 @@ LangSmith tracing is wired into the agent workflow so you can inspect every prom
    - `LANGCHAIN_TRACING_V2=true`
    - `LANGCHAIN_API_KEY=<your key>`
    - `LANGCHAIN_PROJECT=procurement-agent-debug` (or any project name you prefer)
-3. Start the app as usual with `docker-compose up`.
+3. Start the app as usual with `docker compose up`.
 
 Each `/chat` request now shows up in LangSmith with nested runs for:
 - `procurement_chat` (top-level FastAPI request)

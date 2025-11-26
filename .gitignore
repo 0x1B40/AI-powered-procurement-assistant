@@ -46,7 +46,7 @@ Thumbs.db
 .dockerignore
 
 # Data files
-data/
+/data/
 notebooks/.ipynb_checkpoints/Data testing-checkpoint.ipynb
 
 # Cleanup directories
