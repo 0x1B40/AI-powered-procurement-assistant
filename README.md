@@ -12,7 +12,14 @@ This repository contains an AI-powered procurement assistant that converts natur
    - `PRIMARY_LLM_API_KEY` → your LLM API key (defaults to Grok/xAI).
    - Also fill the Langsmith API Key if you want to use langsmith for observability and debugging. (note: you will need to have an account )
 
-2. **Start all services with Docker Compose**
+2. **Ensure proper line endings** (Windows users)
+   If you're on Windows, run this command to ensure shell scripts have proper Unix line endings:
+   ```bash
+   git config --global core.autocrlf input
+   ```
+   This prevents the `$'\r': command not found` errors in Docker containers.
+
+3. **Start all services with Docker Compose**
    ```bash
    docker compose up --build
    ```
