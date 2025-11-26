@@ -12,14 +12,7 @@ This repository contains an AI-powered procurement assistant that converts natur
    - `PRIMARY_LLM_API_KEY` → your LLM API key (defaults to Grok/xAI).
    - Also fill the Langsmith API Key if you want to use langsmith for observability and debugging. (note: you will need to have an account )
 
-2. **Ensure proper line endings** (Windows users)
-   If you're on Windows, run this command to ensure shell scripts have proper Unix line endings:
-   ```bash
-   git config --global core.autocrlf input
-   ```
-   This prevents the `$'\r': command not found` errors in Docker containers.
-
-3. **Start all services with Docker Compose**
+2. **Start all services with Docker Compose**
    ```bash
    docker compose up --build
    ```
@@ -28,9 +21,15 @@ This repository contains an AI-powered procurement assistant that converts natur
 
 ### Data Setup
 
-   For Docker usage, place your data files in the `data/` directory:
-   - `data/PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv` (procurement dataset)
-   - Other document files should be there as well (the .docx and .pdf files from the archive) which will be used for RAG when users ask questions related to that content.
+   1. **Extract the data archive**
+      Download the data archive and extract its contents into the `data/` directory. The archive should contain:
+      - `PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv` (procurement dataset)
+      - Reference documents (.docx and .pdf files) for RAG functionality
+
+   2. **Verify data placement**
+      Ensure your data files are placed in the `data/` directory:
+      - `data/PURCHASE ORDER DATA EXTRACT 2012-2015_0.csv` (procurement dataset)
+      - Reference document files (.docx and .pdf) which will be used for RAG when users ask questions related to that content.
 
 3. **Load the dataset**
    ```bash
